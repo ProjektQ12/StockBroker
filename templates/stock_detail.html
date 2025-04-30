@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Details für {{ symbol }}{% endblock %}
+
+{% block content %}
+    <h2>Details für Aktie: {{ symbol }}</h2>
+
+    {# --- Anzeige der Quote-Daten (wie zuvor) --- #}
+    {% if quote_error %}
+        <p class="error">Fehler beim Laden der Kursdaten: {{ quote_error }}</p>
+    {% elif quote %}
+        <dl class="stock-details">
+            <dt>Symbol</dt><dd>{{ quote.symbol }}</dd>
+            <dt>Aktueller Preis</dt><dd>{{ quote.price }} {{ currency }}</dd>
+            <dt>Eröffnung</dt><dd>{{ quote.open }}</dd>
+            <dt>Tageshoch</dt><dd>{{ quote.high }}</dd>
+            <dt>Tagestief</dt><dd>{{ quote.low }}</dd>
+            <dt>Vortagesschluss</dt><dd>{{ quote.previous_close }}</dd>
+            <dt>Volumen</dt><dd>{{ quote.volume }}</dd>
+            <dt>Letzte Aktualisierung</dt><dd>{{ quote.latest_trading_day }}</dd>
+        </dl>
+    {% else %}
+        <p>Keine Detaildaten verfügbar.</p>
+    {% endif %}
+
+    <hr> {# Trennlinie zum Chart #}
+
+    {# --- Chart-Bereich --- #}
+    <h3>Kursverlauf</h3>
+    {% if chart_error %}
+        <p class="error">Fehler beim Laden der Chart-Daten: {{ chart_error }}</p>
+    {% elif chart_dates_json != 'null' and chart_prices_json != 'null' %}
+        {# Buttons für Zeitrahmen #}
+        <div class="timeframe-buttons" style="margin-bottom: 15px;">
+            <button onclick="updateChartRange('1M')">1 Monat</button>
+            <button onclick="updateChartRange('6M')">6 Monate</button>
+            <button onclick="updateChartRange('1Y')">1 Jahr</button>
+            <button onclick="updateChartRange('5Y')">5 Jahre</button>
+            <button onclick="updateChartRange('Max')">Max</button>
+        </div>
+
+        {# Canvas für den Chart #}
+        <div style="max-width: 760px; margin: auto;"> {# Container zur Größenkontrolle #}
+             <canvas id="stockChartCanvas"></canvas>
+        </div>
+
+        {# Chart.js einbinden (CDN) #}
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        {# Moment.js optional für bessere Datumsbehandlung, aber Chart.js kann oft YYYY-MM-DD #}
+        {# <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script> #}
+        {# <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.1/dist/chartjs-adapter-moment.min.js"></script> #}
+
+
+        <script>
+            // Daten vom Backend sicher übernehmen (Flask's tojson hat sie schon als JS-lesbaren String formatiert)
+            // JSON.parse wandelt den String wieder in ein JavaScript Array/Objekt um
+            const allDates = JSON.parse({{ chart_dates_json|safe }});
+            const allPrices = JSON.parse({{ chart_prices_json|safe }});
+            const stockSymbol = {{ symbol|tojson }}; // Sicherstellen, dass das Symbol als JS-String übergeben wird
+            const currencySymbol = {{ currency|tojson }}; // Währungssymbol
+
+            let stockChart = null; // Globale Variable für das Chart-Objekt
+
+            // Funktion zum Initialisieren oder Aktualisieren des Charts
+            function renderChart(displayDates, displayPrices) {
+                const ctx = document.getElementById('stockChartCanvas').getContext('2d');
+
+                if (!ctx) {
+                    console.error("Canvas context konnte nicht gefunden werden!");
+                    return;
+                }
+
+                const chartData = {
+                    labels: displayDates, // Daten für X-Achse (Datum)
+                    datasets: [{
+                        label: `Schlusskurs (${stockSymbol}) ${currencySymbol}`, // Dynamisches Label
+                        data: displayPrices, // Daten für Y-Achse (Preis)
+                        borderColor: 'rgb(75, 192, 192)', // Linienfarbe
+                        tension: 0.1, // Leichte Kurvenglättung
+                        borderWidth: 1.5,
+                        pointRadius: 0, // Keine Punkte für jeden Datenpunkt (besser bei vielen Daten)
+                        pointHoverRadius: 5, // Punkt beim Hovern
+                    }]
+                };
+
+                const chartConfig = {
+                    type: 'line', // Linienchart
+                    data: chartData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true, // Verhältnis beibehalten oder an Container anpassen
+                        scales: {
+                            x: {
+                                type: 'time', // Wichtig, damit Chart.js Datums-Strings versteht
+                                time: {
+                                    unit: 'month', // Standard-Einheit für Ticks (wird oft automatisch angepasst)
+                                    tooltipFormat: 'll', // Format im Tooltip (z.B. Sep 4, 1986) - braucht evtl. moment.js Adapter
+                                    displayFormats: { // Wie Labels auf der Achse angezeigt werden
+                                         'day': 'DD MMM',
+                                         'week': 'DD MMM YY',
+                                         'month': 'MMM YY',
+                                         'quarter': '[Q]Q YYYY',
+                                         'year': 'YYYY'
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Datum'
+                                }
+                            },
+                            y: {
+                                beginAtZero: false, // Y-Achse nicht bei 0 beginnen lassen (besser für Preis-Charts)
+                                title: {
+                                    display: true,
+                                    text: `Preis (${currencySymbol})`
+                                }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                            },
+                            title: { // Chart-Titel (optional, da wir schon H3 haben)
+                                display: false,
+                                text: `Kursverlauf ${stockSymbol}`
+                            }
+                        },
+                        interaction: { // Performance bei vielen Punkten verbessern
+                           mode: 'nearest',
+                           axis: 'x',
+                           intersect: false
+                        }
+                    }
+                };
+
+                // Wenn Chart schon existiert, aktualisieren, sonst neu erstellen
+                if (stockChart) {
+                    stockChart.data.labels = displayDates;
+                    stockChart.data.datasets[0].data = displayPrices;
+                    stockChart.update(); // Wichtig! Chart neu zeichnen
+                } else {
+                    // Chart.js benötigt den Zeit-Adapter, wenn man 'time' für die x-Achse nutzt
+                    // Wenn man nur Strings als Labels hat, geht es oft auch ohne, aber 'time' ist robuster
+                    // Stellen sicher, dass der Adapter geladen ist, oder vereinfachen die Config
+                    // Hier nutzen wir die eingebaute Fähigkeit von V3+, Datumsstrings zu erkennen
+                    stockChart = new Chart(ctx, chartConfig);
+                }
+            }
+
+            // Funktion zum Filtern der Daten basierend auf dem Zeitrahmen
+            function updateChartRange(range) {
+                if (!allDates || !allPrices || allDates.length === 0) return; // Nichts tun, wenn keine Daten da
+
+                const endDate = new Date(allDates[allDates.length - 1]); // Letztes Datum in den Daten
+                let startDate;
+
+                switch(range) {
+                    case '1M':
+                        startDate = new Date(endDate);
+                        startDate.setMonth(endDate.getMonth() - 1);
+                        break;
+                    case '6M':
+                        startDate = new Date(endDate);
+                        startDate.setMonth(endDate.getMonth() - 6);
+                        break;
+                    case '1Y':
+                        startDate = new Date(endDate);
+                        startDate.setFullYear(endDate.getFullYear() - 1);
+                        break;
+                    case '5Y':
+                         startDate = new Date(endDate);
+                         startDate.setFullYear(endDate.getFullYear() - 5);
+                         break;
+                    case 'Max':
+                    default:
+                        startDate = new Date(allDates[0]); // Erstes Datum in den Daten
+                        break;
+                }
+
+                // Konvertiere startDate zu YYYY-MM-DD String für einfachen Vergleich
+                const startDateString = startDate.toISOString().split('T')[0];
+
+                // Filtere die Daten
+                const filteredDates = [];
+                const filteredPrices = [];
+                for (let i = 0; i < allDates.length; i++) {
+                    // Vergleiche als Strings oder parse zu Date Objekten
+                    if (allDates[i] >= startDateString) {
+                        filteredDates.push(allDates[i]);
+                        filteredPrices.push(allPrices[i]);
+                    }
+                }
+
+                // Rendere den Chart mit den gefilterten Daten
+                renderChart(filteredDates, filteredPrices);
+            }
+
+            // Initialen Chart rendern (standardmäßig '1 Jahr' oder 'Max')
+            // Warten bis das DOM geladen ist (optional, aber sicherer)
+            document.addEventListener('DOMContentLoaded', (event) => {
+                if (allDates && allPrices) {
+                     updateChartRange('1Y'); // Starte mit 1 Jahr Ansicht
+                     // Alternativ: updateChartRange('Max'); // Starte mit Max Ansicht
+                } else {
+                    console.log("Keine Chartdaten zum Initialisieren vorhanden.");
+                }
+            });
+
+        </script>
+
+    {% else %}
+        <p>Keine Chart-Daten verfügbar für {{ symbol }}.</p>
+    {% endif %}
+
+    <p style="margin-top: 20px;"><a href="/">Zurück zur Suche</a></p>
+{% endblock %}
