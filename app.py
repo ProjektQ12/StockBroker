@@ -16,6 +16,7 @@ def search_alpha_vantage(keywords):
         'keywords': keywords,
         'apikey': API_KEY
     }
+
     try:
         response = requests.get(ALPHA_VANTAGE_URL, params=params, timeout=10)
         response.raise_for_status()
