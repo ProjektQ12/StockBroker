@@ -3,6 +3,11 @@ import requests
 from flask import Flask, render_template, request, url_for, redirect, json # json hinzufügen
 from datetime import datetime, timedelta # Für Zeitberechnungen bei der Filterung (optional serverseitig)
 
+#Für neues Graphing
+import yfinance as yf
+import plotly.graph_objects as go
+import pandas as pd
+
 app = Flask(__name__)
 
 # ... (API Key, URL, search_alpha_vantage, get_quote_alpha_vantage bleiben gleich) ...
@@ -158,6 +163,73 @@ def search_page():
         results, error = search_alpha_vantage(query)
     return render_template('search.html', query=query, results=results, error=error)
 
+@app.route('/graph', methods=['GET', 'POST'])
+def index():
+    chart_html = None
+    error = None
+    current_ticker = None
+    company_name = None
+
+    if request.method == 'POST':
+        ticker_symbol = request.form.get('ticker', '').strip().upper()
+        current_ticker = ticker_symbol
+
+        if not ticker_symbol:
+            error = "Bitte gib einen Aktien-Ticker ein."
+        else:
+            try:
+                stock = yf.Ticker(ticker_symbol)
+                # Versuche, grundlegende Informationen abzurufen, um die Gültigkeit zu prüfen
+                info = stock.info
+                if not info or 'shortName' not in info: # Manchmal ist info leer für ungültige Ticker
+                    error = f"Keine Informationen für Ticker '{ticker_symbol}' gefunden. Ist der Ticker korrekt?"
+                else:
+                    company_name = info.get('longName', info.get('shortName', ticker_symbol))
+
+                    # Hole historische Daten (z.B. für das letzte Jahr)
+                    # Weitere Optionen für period: "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"
+                    hist_data = stock.history(period="1y")
+
+                    if hist_data.empty:
+                        error = f"Keine historischen Daten für '{ticker_symbol}' gefunden."
+                    else:
+                        # Erstelle den Plotly Chart
+                        fig = go.Figure()
+
+                        # Candlestick Chart
+                        fig.add_trace(go.Candlestick(x=hist_data.index,
+                                        open=hist_data['Open'],
+                                        high=hist_data['High'],
+                                        low=hist_data['Low'],
+                                        close=hist_data['Close'],
+                                        name='Candlestick'))
+
+                        # Optional: Gleitender Durchschnitt hinzufügen
+                        # hist_data['MA20'] = hist_data['Close'].rolling(window=20).mean()
+                        # fig.add_trace(go.Scatter(x=hist_data.index, y=hist_data['MA20'], mode='lines', name='MA20', line=dict(color='orange')))
+
+
+                        fig.update_layout(
+                            title=f'Aktienkurs: {company_name} ({ticker_symbol})',
+                            xaxis_title='Datum',
+                            yaxis_title='Preis (USD)', # Annahme: USD, kann je nach Aktie variieren
+                            xaxis_rangeslider_visible=False # Schaltet den Range Slider unter dem Chart an/aus
+                        )
+
+                        # Konvertiere den Plotly Chart in HTML
+                        # include_plotlyjs='cdn' lädt Plotly.js von einem CDN, sodass es nicht lokal eingebunden werden muss.
+                        chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+
+            except Exception as e:
+                # yfinance kann verschiedene Fehler werfen, z.B. wenn der Ticker nicht existiert
+                error = f"Fehler beim Abrufen der Daten für '{ticker_symbol}': {str(e)}"
+                print(f"Ein Fehler ist aufgetreten: {e}") # Für Debugging in der Konsole
+
+    return render_template('graph.html',
+                           chart_html=chart_html,
+                           error=error,
+                           current_ticker=current_ticker,
+                           company_name=company_name)
 
 @app.route('/stock', methods=['GET'])
 def stock_detail_page():
