@@ -9,16 +9,15 @@
     </h1>
 
     {% if error %}
-        {# Fehler oder Hinweise von generate_stock_plotly_chart (z.B. Anpassungen) werden hier angezeigt #}
         {% if "Hinweis:" in error %}
-            <div class="info-box">{{ error }}</div>
+            <div class="info-box">{{ error }}</div> {# Hinweise (z.B. Anpassungen) als Info darstellen #}
         {% else %}
-            <div class="error-box">{{ error }}</div>
+            <div class="error-box">{{ error }}</div> {# Echte Fehler als Fehler #}
         {% endif %}
     {% endif %}
 
     {# -- Kurs-Chart Bereich -- #}
-    {% if not details or not details.error or chart_html %} {# Chart auch anzeigen, wenn Detailfehler, aber Chart da ist #}
+    {% if not details or not details.error or chart_html %}
     <div class="data-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
             <h2>Kursverlauf</h2>
@@ -32,15 +31,13 @@
                     </select>
                 </div>
                 <div>
-                    <label for="intervalSelect" style="font-size:0.85em; margin-right:5px;">Intervall:</label>
-                    <select name="interval" id="intervalSelect" onchange="this.form.submit()" style="padding:6px 8px; font-size:0.9em; border-radius:4px;">
-                        {% for i_val, i_disp in available_intervals %}
-                            <option value="{{ i_val }}" {{ 'selected' if current_interval == i_val }}>{{ i_disp }}</option>
+                    <label for="qualitySelect" style="font-size:0.85em; margin-right:5px;">Chart-Qualität:</label>
+                    <select name="quality" id="qualitySelect" onchange="this.form.submit()" style="padding:6px 8px; font-size:0.9em; border-radius:4px;">
+                        {% for q_val, q_disp in available_qualities %}
+                            <option value="{{ q_val }}" {{ 'selected' if current_quality == q_val }}>{{ q_disp }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                {# Ein Button ist nicht zwingend nötig, wenn onchange das Formular absendet #}
-                {# <button type="submit" style="padding:6px 12px; font-size:0.9em;">Aktualisieren</button> #}
             </form>
         </div>
 
@@ -48,34 +45,27 @@
             <div class="chart-container">
                 {{ chart_html | safe }}
             </div>
-        {% elif not error %} {# Wenn kein globaler Fehler, aber Chart fehlt #}
-            <p>Chart konnte nicht geladen werden für {{ ticker }} mit Periode '{{ current_period }}' und Intervall '{{ current_interval }}'.</p>
+        {% elif not error %}
+            <p>Chart konnte nicht geladen werden für {{ ticker }} (Auswahl: {{current_period}}, {{current_quality}}).</p>
         {% endif %}
     </div>
     {% endif %}
 
-
-    {# -- Fundamentale Daten und andere Infos (bleibt wie zuvor) -- #}
+    {# -- Fundamentale Daten (Rest bleibt gleich) -- #}
     {% if details and not details.error %}
-        <div class="data-section">
-            <h2>Überblick</h2>
-            {% if details.quote_info %}
-                <table class="table table-sm"><tbody>
-                {% for key, value in details.quote_info.items() %}<tr><th>{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}
-                </tbody></table>
+        <div class="data-section"><h2>Überblick</h2>
+            {% if details.quote_info %}<table class="table table-sm"><tbody>
+            {% for key, value in details.quote_info.items() %}<tr><th>{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}
+            </tbody></table>
             {% elif details.quote_info_error %}<p class="error-box" style="font-size:0.9em;">{{ details.quote_info_error }}</p>
             {% else %}<p>Keine aktuellen Kursinformationen verfügbar.</p>{% endif %}
         </div>
-        {% if details.info and details.info.longBusinessSummary %}
-        <div class="data-section"><h3>Unternehmensprofil</h3><p style="font-size:0.95em; line-height:1.7;">{{ details.info.longBusinessSummary }}</p></div>
-        {% endif %}
+        {% if details.info and details.info.longBusinessSummary %}<div class="data-section"><h3>Unternehmensprofil</h3><p style="font-size:0.95em; line-height:1.7;">{{ details.info.longBusinessSummary }}</p></div>{% endif %}
         <div class="data-section"><h3>Finanzdaten (Jährlich)</h3>{% if details.financials_html %}{{ details.financials_html | safe }}{% else %}<p>Keine Finanzdaten verfügbar.</p>{% endif %}</div>
         <div class="data-section"><h3>Haupteigner</h3>{% if details.major_holders_html %}{{ details.major_holders_html | safe }}{% else %}<p>Keine Daten zu Haupteignern verfügbar.</p>{% endif %}</div>
         <div class="data-section"><h3>Letzte Analystenempfehlungen</h3>{% if details.recommendations_html %}{{ details.recommendations_html | safe }}{% else %}<p>Keine Empfehlungen verfügbar.</p>{% endif %}</div>
     {% elif details and details.error and not error and not chart_html %}
-        {# Fehler bei Detaildaten, aber kein Chart-Fehler und kein Chart gerendert (weil z.B. Detaildaten Vorbedingung waren) #}
         <div class="error-box">Fehler beim Laden der Detaildaten: {{ details.error }}</div>
     {% endif %}
-
     <a href="{{ url_for('search_stock_page') }}" class="footer-link">« Zurück zur Ticker-Suche</a>
 {% endblock %}
