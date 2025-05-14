@@ -3,24 +3,20 @@ import yfinance as yf
 import plotly.graph_objects as go
 import pandas as pd
 
-# datetime wird hier nicht mehr explizit für YTD benötigt, yfinance kann "ytd"
-
 app = Flask(__name__)
 
-# -- Konstanten für Dropdown-Optionen --
+# -- Konstanten für Dropdown-Optionen (bleiben gleich) --
 AVAILABLE_PERIODS = [
     ("5d", "5 Tage"), ("1mo", "1 Monat"), ("3mo", "3 Monate"),
     ("6mo", "6 Monate"), ("1y", "1 Jahr"), ("2y", "2 Jahre"),
     ("5y", "5 Jahre"), ("ytd", "Seit Jahresbeginn"), ("max", "Maximal")
 ]
-
 AVAILABLE_QUALITIES = [
-    # (Wert, Anzeigename)
     ("high", "Hoch"), ("normal", "Normal"), ("low", "Niedrig")
 ]
 
 
-# -- HELPER FUNKTIONEN (get_stock_basic_info, get_stock_detailed_data bleiben unverändert) --
+# -- HELPER FUNKTIONEN (get_stock_basic_info, get_stock_detailed_data, determine_actual_interval_and_period bleiben wie im vorherigen Schritt) --
 def get_stock_basic_info(ticker_symbol):
     try:
         stock = yf.Ticker(ticker_symbol)
@@ -90,36 +86,30 @@ def get_stock_detailed_data(ticker_symbol):
 
 
 def determine_actual_interval_and_period(selected_period, selected_quality):
-    """
-    Bestimmt den tatsächlichen Intervall und Zeitraum basierend auf Auswahl und yfinance-Limits.
-    Gibt (actual_period, actual_interval, adjustment_note) zurück.
-    """
     actual_period = selected_period
     adjustment_note = None
-
-    # Mapping Logik: (Diese Logik ist ein Beispiel und kann verfeinert werden)
     if selected_period == "5d":
         if selected_quality == "high":
-            actual_interval = "1m"  # Feinste für kurze Zeit
+            actual_interval = "1m"
         elif selected_quality == "normal":
             actual_interval = "5m"
         else:
-            actual_interval = "15m"  # Low
+            actual_interval = "15m"
     elif selected_period == "1mo":
         if selected_quality == "high":
-            actual_interval = "5m"  # yf max 60d für 5m
+            actual_interval = "5m"
         elif selected_quality == "normal":
             actual_interval = "30m"
         else:
             actual_interval = "1h"
     elif selected_period == "3mo":
         if selected_quality == "high":
-            actual_interval = "30m"  # yf max 60d, also wird Periode angepasst
+            actual_interval = "30m"
         elif selected_quality == "normal":
             actual_interval = "1h"
         else:
             actual_interval = "1d"
-    elif selected_period in ["6mo", "ytd"]:  # YTD kann kurz oder lang sein
+    elif selected_period in ["6mo", "ytd"]:
         if selected_quality == "high":
             actual_interval = "1h"
         elif selected_quality == "normal":
@@ -135,44 +125,41 @@ def determine_actual_interval_and_period(selected_period, selected_quality):
             actual_interval = "1mo"
     elif selected_period in ["5y", "max"]:
         if selected_quality == "high":
-            actual_interval = "1wk"  # Für sehr lange Zeiträume ist 1d oft zu viel
+            actual_interval = "1wk"
         elif selected_quality == "normal":
             actual_interval = "1mo"
         else:
-            actual_interval = "3mo"  # yf unterstützt "3mo" Intervall
-    else:  # Fallback
+            actual_interval = "3mo"
+    else:
         actual_interval = "1d"
 
-    # --- Anpassung der Periode basierend auf yfinance Intervall-Limits ---
-    # Wichtig, um Fehler von yfinance zu vermeiden
     original_period_for_note = actual_period
     if actual_interval == "1m" and actual_period not in ["1d", "2d", "3d", "4d", "5d"]:
         actual_period = "5d"
     elif actual_interval in ["2m", "5m", "15m", "30m"] and actual_period not in ["1d", "5d", "1mo", "2mo"]:
-        # 2mo ist ca. 60d, was das Limit für diese Intervalle ist
         if selected_period == "3mo":
-            actual_period = "2mo"  # Explizit für 3mo, wenn Intervall zu fein
+            actual_period = "2mo"
         elif selected_period not in ["1d", "5d", "1mo"]:
-            actual_period = "2mo"  # Allgemeiner Fallback
+            actual_period = "2mo"
     elif actual_interval in ["60m", "90m", "1h", "4h"] and actual_period not in ["1d", "5d", "1mo", "3mo", "6mo", "1y",
                                                                                  "2y", "ytd"]:
-        if selected_period in ["5y", "max"]: actual_period = "2y"  # Max 2 Jahre für stündliche Daten
+        if selected_period in ["5y", "max"]: actual_period = "2y"
 
     if original_period_for_note != actual_period:
         period_display_original = next((p[1] for p in AVAILABLE_PERIODS if p[0] == original_period_for_note),
                                        original_period_for_note)
         period_display_actual = next((p[1] for p in AVAILABLE_PERIODS if p[0] == actual_period), actual_period)
         adjustment_note = f"Hinweis: Zeitraum für Qualität '{selected_quality}' und ursprüngliche Auswahl '{period_display_original}' auf '{period_display_actual}' angepasst, um Intervall '{actual_interval}' zu unterstützen."
-
     return actual_period, actual_interval, adjustment_note
 
 
-def generate_stock_plotly_chart(ticker_symbol, period="1y", interval="1d", quality_note=None):
+def generate_stock_plotly_chart(ticker_symbol, period="1y", interval="1d", quality_note=None,
+                                remove_gaps=True):  # Neuer Parameter
     chart_html = None
-    error_msg = quality_note if quality_note else None  # Start mit evtl. Anpassungshinweis
+    error_msg = quality_note if quality_note else None
     company_name = ticker_symbol
 
-    print(f"Chart-Generierung: Ticker={ticker_symbol}, Period={period}, Interval={interval}")
+    print(f"Chart-Generierung: Ticker={ticker_symbol}, Period={period}, Interval={interval}, RemoveGaps={remove_gaps}")
     try:
         stock = yf.Ticker(ticker_symbol)
         info_temp = stock.info
@@ -192,9 +179,8 @@ def generate_stock_plotly_chart(ticker_symbol, period="1y", interval="1d", quali
                                          name=f'{ticker_symbol}'))
 
             period_display = next((p[1] for p in AVAILABLE_PERIODS if p[0] == period), period)
-            # Finde Anzeigename für Intervall (etwas umständlich, da AVAILABLE_INTERVALS anders strukturiert ist als yf Werte)
-            interval_map_for_display = {"1m": "1 Min", "5m": "5 Min", "15m": "15 Min", "30m": "30 Min", "60m": "1 Std",
-                                        "1h": "1 Std", "90m": "90 Min", "4h": "4 Std", "1d": "Täglich",
+            interval_map_for_display = {"1m": "1 Min", "2m": "2 Min", "5m": "5 Min", "15m": "15 Min", "30m": "30 Min",
+                                        "60m": "1 Std", "1h": "1 Std", "90m": "90 Min", "4h": "4 Std", "1d": "Täglich",
                                         "1wk": "Wöchentlich", "1mo": "Monatlich", "3mo": "Quartalsweise"}
             interval_display = interval_map_for_display.get(interval, interval)
 
@@ -204,14 +190,15 @@ def generate_stock_plotly_chart(ticker_symbol, period="1y", interval="1d", quali
                 xaxis_rangeslider_visible=False,
                 margin=dict(l=40, r=20, t=80, b=40)
             )
-            if interval in ["1d", "1wk", "1mo", "3mo"]:
+
+            if remove_gaps:  # Hier wird der neue Parameter verwendet
                 fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
+
             chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
 
     except Exception as e:
         current_err = f"Fehler beim Generieren des Charts (Periode: {period}, Intervall: {interval}): {str(e)}"
         print(f"Fehler in generate_stock_plotly_chart für {ticker_symbol}: {current_err}")
-        # Spezifischere Fehlermeldungen von yfinance
         if "No data found for this date range" in str(e) or "yfinance failed to decrypt Yahoo data" in str(e):
             current_err = f"Keine Daten für '{ticker_symbol}' im Zeitraum '{period}' mit Intervall '{interval}'. Die Kombination ist evtl. ungültig oder der Ticker nicht verfügbar."
         error_msg = (error_msg + " | " if error_msg else "") + current_err
@@ -237,8 +224,12 @@ def search_stock_page():
             if info_error or not basic_info:
                 error = info_error if info_error else f"Ticker '{ticker_query}' nicht gefunden oder ungültig."
             else:
-                # Standardmäßig mit 1 Jahr und normaler Qualität starten
-                return redirect(url_for('stock_detail_page', ticker_symbol=ticker_query, period='1y', quality='normal'))
+                # Standardmäßig mit 1 Jahr, normaler Qualität und Lücken entfernt starten
+                return redirect(url_for('stock_detail_page',
+                                        ticker_symbol=ticker_query,
+                                        period='1y',
+                                        quality='normal',
+                                        remove_gaps='on'))  # Standard 'on'
     return render_template('search_page.html', error=error, query=request.form.get('ticker_query', ''))
 
 
@@ -248,20 +239,27 @@ def stock_detail_page(ticker_symbol):
     stock_details = get_stock_detailed_data(ticker_symbol)
 
     selected_period = request.args.get('period', '1y')
-    selected_quality = request.args.get('quality', 'normal')  # Standard 'normal'
+    selected_quality = request.args.get('quality', 'normal')
+    # Neuer Parameter für Lücken, Standard 'on' (Checkbox ist gecheckt)
+    # HTML-Checkboxen senden den Wert nur, wenn sie gecheckt sind.
+    # Wenn nicht gecheckt, ist der Parameter nicht im request.args.
+    # Wir interpretieren 'on' als True, alles andere (oder Fehlen) als Standard True.
+    # Oder besser: Wenn der Parameter fehlt, ist es der erste Aufruf oder der User hat ihn nicht explizit geändert
+    # Wir können den Default im Template setzen und hier den Wert aus request.args.get('remove_gaps', 'on') nehmen
+    remove_gaps_str = request.args.get('remove_gaps', 'on')  # Standardmäßig 'on'
+    remove_gaps_bool = remove_gaps_str == 'on'
 
-    # Sicherstellen, dass die übergebenen Werte in unseren Listen sind, sonst Default
     if not any(p[0] == selected_period for p in AVAILABLE_PERIODS): selected_period = '1y'
     if not any(q[0] == selected_quality for q in AVAILABLE_QUALITIES): selected_quality = 'normal'
 
-    # Eigentliche Periode und Intervall bestimmen
     actual_period, actual_interval, adjustment_note = determine_actual_interval_and_period(selected_period,
                                                                                            selected_quality)
 
     chart_html, chart_error_msg, _ = generate_stock_plotly_chart(ticker_symbol,
                                                                  period=actual_period,
                                                                  interval=actual_interval,
-                                                                 quality_note=adjustment_note)  # Hinweis übergeben
+                                                                 quality_note=adjustment_note,
+                                                                 remove_gaps=remove_gaps_bool)
 
     overall_error = chart_error_msg if chart_error_msg else stock_details.get('error')
 
@@ -270,20 +268,20 @@ def stock_detail_page(ticker_symbol):
                            details=stock_details,
                            chart_html=chart_html,
                            error=overall_error,
-                           current_period=selected_period,  # Behalte die ursprüngliche Auswahl für die Dropdowns
+                           current_period=selected_period,
                            current_quality=selected_quality,
-                           # Für die Anzeige im Chart-Titel etc. könnten wir auch actual_period/interval übergeben
-                           # Falls der User sehen soll, was WIRKLICH verwendet wurde.
-                           # Hier übergeben wir die ursprüngliche Auswahl für die Dropdown-Vorauswahl.
+                           current_remove_gaps=remove_gaps_bool,  # Den Boolean-Wert an das Template geben
                            available_periods=AVAILABLE_PERIODS,
                            available_qualities=AVAILABLE_QUALITIES)
 
 
 @app.route('/test_graph')
-def test_graph_page():+
+def test_graph_page():
     fixed_ticker = "AAPL"
     selected_period = request.args.get("period", "6mo")
     selected_quality = request.args.get("quality", "high")
+    remove_gaps_str = request.args.get('remove_gaps', 'on')
+    remove_gaps_bool = remove_gaps_str == 'on'
 
     if not any(p[0] == selected_period for p in AVAILABLE_PERIODS): selected_period = '6mo'
     if not any(q[0] == selected_quality for q in AVAILABLE_QUALITIES): selected_quality = 'high'
@@ -294,7 +292,8 @@ def test_graph_page():+
     chart_html, error_msg, company_name = generate_stock_plotly_chart(fixed_ticker,
                                                                       period=actual_period,
                                                                       interval=actual_interval,
-                                                                      quality_note=adjustment_note)
+                                                                      quality_note=adjustment_note,
+                                                                      remove_gaps=remove_gaps_bool)
 
     return render_template('test_graph_page.html',
                            ticker=fixed_ticker,
@@ -303,7 +302,7 @@ def test_graph_page():+
                            error=error_msg,
                            current_period=selected_period,
                            current_quality=selected_quality,
-                           # Infos für den Titel im Test-Template
+                           current_remove_gaps=remove_gaps_bool,
                            actual_period_used=actual_period,
                            actual_interval_used=actual_interval,
                            available_periods=AVAILABLE_PERIODS,

@@ -10,18 +10,18 @@
 
     {% if error %}
         {% if "Hinweis:" in error %}
-            <div class="info-box">{{ error }}</div> {# Hinweise (z.B. Anpassungen) als Info darstellen #}
+            <div class="info-box">{{ error }}</div>
         {% else %}
-            <div class="error-box">{{ error }}</div> {# Echte Fehler als Fehler #}
+            <div class="error-box">{{ error }}</div>
         {% endif %}
     {% endif %}
 
     {# -- Kurs-Chart Bereich -- #}
     {% if not details or not details.error or chart_html %}
     <div class="data-section">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap;">
             <h2>Kursverlauf</h2>
-            <form id="chartOptionsForm" method="GET" action="{{ url_for('stock_detail_page', ticker_symbol=ticker) }}" style="margin-bottom:0; display:flex; gap:10px; background-color:transparent; padding:0;">
+            <form id="chartOptionsForm" method="GET" action="{{ url_for('stock_detail_page', ticker_symbol=ticker) }}" style="margin-bottom:0; display:flex; gap:10px; align-items:center; background-color:transparent; padding:0; flex-wrap: wrap;">
                 <div>
                     <label for="periodSelect" style="font-size:0.85em; margin-right:5px;">Zeitraum:</label>
                     <select name="period" id="periodSelect" onchange="this.form.submit()" style="padding:6px 8px; font-size:0.9em; border-radius:4px;">
@@ -31,12 +31,18 @@
                     </select>
                 </div>
                 <div>
-                    <label for="qualitySelect" style="font-size:0.85em; margin-right:5px;">Chart-Qualität:</label>
+                    <label for="qualitySelect" style="font-size:0.85em; margin-right:5px;">Qualität:</label>
                     <select name="quality" id="qualitySelect" onchange="this.form.submit()" style="padding:6px 8px; font-size:0.9em; border-radius:4px;">
                         {% for q_val, q_disp in available_qualities %}
                             <option value="{{ q_val }}" {{ 'selected' if current_quality == q_val }}>{{ q_disp }}</option>
                         {% endfor %}
                     </select>
+                </div>
+                <div style="margin-left: 5px;"> {# Etwas Abstand für die Checkbox #}
+                    <input type="checkbox" name="remove_gaps" id="removeGapsCheckbox" value="on"
+                           onchange="this.form.submit()"
+                           {% if current_remove_gaps %}checked{% endif %}>
+                    <label for="removeGapsCheckbox" style="font-size:0.85em;">Keine Lücken (Wochenenden)</label>
                 </div>
             </form>
         </div>

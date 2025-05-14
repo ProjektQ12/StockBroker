@@ -6,7 +6,7 @@
     <h1>
         Test Chart für {{ company_name if company_name else ticker }}
     </h1>
-     <form id="chartOptionsFormTest" method="GET" action="{{ url_for('test_graph_page') }}" style="margin-bottom:20px; display:flex; gap:10px; align-items:center; background-color:transparent; padding:0;">
+     <form id="chartOptionsFormTest" method="GET" action="{{ url_for('test_graph_page') }}" style="margin-bottom:20px; display:flex; gap:10px; align-items:center; background-color:transparent; padding:0; flex-wrap:wrap;">
         <input type="hidden" name="ticker_symbol" value="{{ticker}}">
         <div>
             <label for="periodSelectTest" style="font-size:0.85em; margin-right:5px;">Zeitraum:</label>
@@ -17,16 +17,22 @@
             </select>
         </div>
         <div>
-            <label for="qualitySelectTest" style="font-size:0.85em; margin-right:5px;">Chart-Qualität:</label>
+            <label for="qualitySelectTest" style="font-size:0.85em; margin-right:5px;">Qualität:</label>
             <select name="quality" id="qualitySelectTest" onchange="this.form.submit()" style="padding:6px 8px; font-size:0.9em; border-radius:4px;">
                 {% for q_val, q_disp in available_qualities %}
                     <option value="{{ q_val }}" {{ 'selected' if current_quality == q_val }}>{{ q_disp }}</option>
                 {% endfor %}
             </select>
         </div>
+        <div style="margin-left: 5px;">
+            <input type="checkbox" name="remove_gaps" id="removeGapsCheckboxTest" value="on"
+                   onchange="this.form.submit()"
+                   {% if current_remove_gaps %}checked{% endif %}>
+            <label for="removeGapsCheckboxTest" style="font-size:0.85em;">Keine Lücken</label>
+        </div>
     </form>
     <p style="text-align:center; font-size:0.9em; color:#555;">
-        Ausgewählt: {{ current_period }}, {{ current_quality }}.
+        Ausgewählt: {{ current_period }}, {{ current_quality }}, Lücken entfernen: {{ "Ja" if current_remove_gaps else "Nein" }}. <br>
         Verwendet für Chart: Periode '{{ actual_period_used }}', Intervall '{{ actual_interval_used }}'.
     </p>
 
