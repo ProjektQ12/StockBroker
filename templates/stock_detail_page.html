@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Details für {{ details.name if details and details.name else ticker }}{% endblock %}
+
+{% block content %}
+    <h1>
+        {{ details.name if details and details.name else ticker }} 
+        <span style="font-size:0.7em; color:#777;">({{ ticker }})</span>
+    </h1>
+
+    {% if error %}
+        <div class="error-box">{{ error }}</div>
+    {% endif %}
+
+    {# -- Kurs-Chart Bereich -- #}
+    {% if not details or not details.error %} {# Chart nur anzeigen, wenn keine gravierenden Fehler bei Detaildaten #}
+    <div class="data-section">
+        <h2>Kursverlauf
+            <span style="font-size:0.7em; color:#555; float:right; margin-top:5px;">
+                Zeitraum:
+                <span class="period-selector">
+                    {% set periods = [('1mo', '1M'), ('3mo', '3M'), ('6mo', '6M'), ('1y', '1J'), ('2y', '2J'), ('5y', '5J'), ('max', 'Max')] %}
+                    {% for p_val, p_disp in periods %}
+                        <a href="{{ url_for('stock_detail_page', ticker_symbol=ticker, period=p_val) }}"
+                           class="{{ 'active' if current_period == p_val else '' }}">{{ p_disp }}</a>
+                    {% endfor %}
+                </span>
+            </span>
+        </h2>
+        {% if chart_html %}
+            <div class="chart-container">
+                {{ chart_html | safe }}
+            </div>
+        {% elif not error %} {# Wenn kein allgemeiner Fehler, aber Chart fehlt (z.B. von chart_error in app.py) #}
+            <p>Chart konnte nicht geladen werden für {{ ticker }}.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+
+    {# -- Fundamentale Daten und andere Infos -- #}
+    {% if details and not details.error %}
+        <div class="data-section">
+            <h2>Überblick</h2>
+            {% if details.quote_info %}
+                <table class="table table-sm">
+                    <tbody>
+                    {% for key, value in details.quote_info.items() %}
+                        <tr>
+                            <th>{{ key }}</th>
+                            <td>{{ value }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% elif details.quote_info_error %}
+                 <p class="error-box" style="font-size:0.9em;">{{ details.quote_info_error }}</p>
+            {% else %}
+                <p>Keine aktuellen Kursinformationen verfügbar.</p>
+            {% endif %}
+        </div>
+
+        {% if details.info and details.info.longBusinessSummary %}
+        <div class="data-section">
+            <h3>Unternehmensprofil</h3>
+            <p style="font-size:0.95em; line-height:1.7;">{{ details.info.longBusinessSummary }}</p>
+        </div>
+        {% endif %}
+        
+        <div class="data-section">
+            <h3>Finanzdaten (Jährlich)</h3>
+            {% if details.financials_html %}
+                {{ details.financials_html | safe }}
+            {% else %}
+                <p>Keine Finanzdaten verfügbar.</p>
+            {% endif %}
+        </div>
+
+        <div class="data-section">
+            <h3>Haupteigner</h3>
+            {% if details.major_holders_html %}
+                {{ details.major_holders_html | safe }}
+            {% else %}
+                <p>Keine Daten zu Haupteignern verfügbar.</p>
+            {% endif %}
+        </div>
+
+        <div class="data-section">
+            <h3>Letzte Analystenempfehlungen</h3>
+             {% if details.recommendations_html %}
+                {{ details.recommendations_html | safe }}
+            {% else %}
+                <p>Keine Empfehlungen verfügbar.</p>
+            {% endif %}
+        </div>
+
+    {% elif details and details.error and not error %} 
+        {# Wenn `details.error` gesetzt ist, aber kein globaler `error` (der oben schon angezeigt wurde) #}
+        <div class="error-box">Fehler beim Laden der Detaildaten: {{ details.error }}</div>
+    {% endif %}
+
+    <a href="{{ url_for('search_stock_page') }}" class="footer-link">« Zurück zur Ticker-Suche</a>
+{% endblock %}

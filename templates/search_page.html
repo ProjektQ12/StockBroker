@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Ticker Suche{% endblock %}
+
+{% block content %}
+    <h1>Aktien-Ticker eingeben</h1>
+    <p style="text-align:center; color:#555; margin-top:-20px; margin-bottom:25px;">
+        Gib ein gültiges Tickersymbol ein (z.B. MSFT, TSLA, BTC-USD, ^GDAXI), um Details und den Chart anzuzeigen.
+    </p>
+
+    <form method="POST" action="{{ url_for('search_stock_page') }}">
+        <label for="ticker_query" class="sr-only">Aktien-Ticker:</label>
+        <input type="text" id="ticker_query" name="ticker_query" value="{{ query if query else '' }}" required placeholder="Ticker-Symbol...">
+        <button type="submit">Details anzeigen</button>
+    </form>
+
+    {% if error %}
+        <div class="error-box">{{ error }}</div>
+    {% endif %}
+{% endblock %}

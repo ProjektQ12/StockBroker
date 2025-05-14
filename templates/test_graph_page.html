@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Test Chart: {{ company_name if company_name else ticker }}{% endblock %}
+
+{% block content %}
+    <h1>
+        Test Chart für {{ company_name if company_name else ticker }}
+        <span style="font-size:0.7em; color:#777;">({{ ticker }} - {{ period }})</span>
+    </h1>
+
+    {% if error %}
+        <div class="error-box">{{ error }}</div>
+    {% endif %}
+
+    {% if chart_html %}
+        <div class="chart-container">
+            {{ chart_html | safe }}
+        </div>
+    {% elif not error %}
+        <p>Chart konnte nicht geladen werden.</p>
+    {% endif %}
+    
+    <a href="{{ url_for('search_stock_page') }}" class="footer-link" style="margin-top:20px;">« Zurück zur Ticker-Suche</a>
+{% endblock %}

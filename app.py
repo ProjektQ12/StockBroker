@@ -1,272 +1,223 @@
-import os
-import requests
-from flask import Flask, render_template, request, url_for, redirect, json # json hinzufügen
-from datetime import datetime, timedelta # Für Zeitberechnungen bei der Filterung (optional serverseitig)
-
-#Für neues Graphing
+from flask import Flask, render_template, request, redirect, url_for
 import yfinance as yf
 import plotly.graph_objects as go
 import pandas as pd
 
 app = Flask(__name__)
 
-# ... (API Key, URL, search_alpha_vantage, get_quote_alpha_vantage bleiben gleich) ...
-API_KEY = '7OSPTVFEGLEN69W7' # Wieder der Hinweis: Besser Umgebungsvariable
-ALPHA_VANTAGE_URL = 'https://www.alphavantage.co/query'
 
-def search_alpha_vantage(keywords):
-    # ... (unverändert) ...
-    params = {
-        'function': 'SYMBOL_SEARCH',
-        'keywords': keywords,
-        'apikey': API_KEY
-    }
+# -- HELPER FUNKTIONEN für yfinance --
 
-
+def get_stock_basic_info(ticker_symbol):
+    """
+    Ruft grundlegende Informationen zu einem Ticker ab (hauptsächlich für Validierung und Namen).
+    """
     try:
-        response = requests.get(ALPHA_VANTAGE_URL, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-
-        if 'Error Message' in data:
-            return None, f"API Fehler: {data['Error Message']}"
-        if 'Note' in data:
-            print(f"API Hinweis: {data['Note']}")
-
-        results = []
-        if 'bestMatches' in data:
-            for match in data['bestMatches']:
-                results.append({
-                    'symbol': match.get('1. symbol'),
-                    'name': match.get('2. name'),
-                    'region': match.get('4. region'),
-                    'currency': match.get('8. currency')
-                })
-            return results, None
+        stock = yf.Ticker(ticker_symbol)
+        info = stock.info
+        if not info or (info.get('longName') is None and info.get('shortName') is None and info.get('symbol') is None):
+            # Wenn Info leer ist, versuche einen kleinen History-Abruf als letzten Test
+            quick_hist = stock.history(period="1d")  # Nur 1 Tag für minimalen Aufwand
+            if quick_hist.empty:
+                return None, f"Keine Informationen für Ticker '{ticker_symbol}' gefunden. Ist der Ticker korrekt?"
+            company_name = info.get('symbol', ticker_symbol)  # Fallback
         else:
-            return [], None
+            company_name = info.get('longName', info.get('shortName', ticker_symbol))
 
-    except requests.exceptions.RequestException as e:
-        return None, f"Netzwerkfehler: {e}"
+        return {'ticker': ticker_symbol, 'name': company_name, 'info_dict': info}, None
     except Exception as e:
-        return None, f"Unerwarteter Fehler bei der Suche: {e}"
+        return None, f"Fehler beim Abrufen der Basisinformationen für '{ticker_symbol}': {str(e)}"
 
-def get_quote_alpha_vantage(symbol):
-    # ... (unverändert) ...
-    params = {
-        'function': 'GLOBAL_QUOTE',
-        'symbol': symbol,
-        'apikey': API_KEY
-    }
+
+def get_stock_detailed_data(ticker_symbol):
+    """
+    Ruft detailliertere Daten (Info, Financials, etc.) für einen Ticker ab.
+    """
+    stock_data = {'ticker': ticker_symbol, 'error': None}
     try:
-        response = requests.get(ALPHA_VANTAGE_URL, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        stock = yf.Ticker(ticker_symbol)
 
-        if 'Error Message' in data:
-            return None, f"API Fehler: {data['Error Message']}"
-        if 'Note' in data:
-            print(f"API Hinweis (Quote): {data['Note']}")
+        # 1. Info (ausführlich)
+        info = stock.info
+        if not info or (info.get('longName') is None and info.get('shortName') is None and info.get('symbol') is None):
+            # Erneute Prüfung, falls der Ticker zwar ein Objekt erstellt, aber keine sinnvollen Infos liefert
+            quick_hist = stock.history(period="1d")
+            if quick_hist.empty:
+                stock_data['error'] = f"Keine detaillierten Informationen für Ticker '{ticker_symbol}' gefunden."
+                return stock_data  # Frühzeitiger Ausstieg
+            stock_data['name'] = info.get('symbol', ticker_symbol)
+        else:
+            stock_data['name'] = info.get('longName', info.get('shortName', ticker_symbol))
 
-        if 'Global Quote' in data and data['Global Quote']:
-            quote_data = data['Global Quote']
-            quote = {
-                'symbol': quote_data.get('01. symbol'),
-                'open': quote_data.get('02. open'),
-                'high': quote_data.get('03. high'),
-                'low': quote_data.get('04. low'),
-                'price': quote_data.get('05. price'),
-                'volume': quote_data.get('06. volume'),
-                'latest_trading_day': quote_data.get('07. latest trading day'),
-                'previous_close': quote_data.get('08. previous close'),
+        stock_data['info'] = info  # Das gesamte Info-Dictionary
+
+        # 2. Weitere Datenpunkte (Beispiele)
+        # Die `.to_html()` Methode von Pandas DataFrames ist nützlich für die Template-Darstellung
+        try:
+            stock_data['financials_html'] = stock.financials.to_html(classes='table table-sm table-striped',
+                                                                     border=0) if not stock.financials.empty else "Keine Finanzdaten verfügbar."
+        except Exception:
+            stock_data['financials_html'] = "Finanzdaten konnten nicht geladen werden."
+
+        try:
+            stock_data['major_holders_html'] = stock.major_holders.to_html(classes='table table-sm table-striped',
+                                                                           border=0) if stock.major_holders is not None and not stock.major_holders.empty else "Keine Daten zu Haupteignern verfügbar."
+        except Exception:
+            stock_data['major_holders_html'] = "Daten zu Haupteignern konnten nicht geladen werden."
+
+        try:
+            stock_data['recommendations_html'] = stock.recommendations.tail(5).to_html(
+                classes='table table-sm table-striped',
+                border=0) if stock.recommendations is not None and not stock.recommendations.empty else "Keine Empfehlungen verfügbar."
+        except Exception:
+            stock_data['recommendations_html'] = "Empfehlungen konnten nicht geladen werden."
+
+        try:
+            # Quote-ähnliche Infos aus stock.info extrahieren, da yf.Ticker kein direktes .quote hat
+            quote_info = {
+                "Preis": info.get("currentPrice", info.get("regularMarketPrice", "N/A")),
+                "Gehandeltes Volumen": info.get("volume", "N/A"),
+                "Tageshoch": info.get("dayHigh", "N/A"),
+                "Tagestief": info.get("dayLow", "N/A"),
+                "Eröffnung": info.get("open", "N/A"),
+                "Vortagesschluss": info.get("previousClose", "N/A"),
+                "Marktkapitalisierung": info.get("marketCap", "N/A"),
+                "Dividendenrendite": info.get("dividendYield", "N/A")
             }
-            if '.' in symbol and symbol.split('.')[-1].upper() == 'DE':
-                 quote['currency'] = 'EUR'
-            else:
-                 quote['currency'] = ''
+            # Formatieren für schönere Anzeige
+            if isinstance(quote_info.get("Marktkapitalisierung"), (int, float)):
+                quote_info["Marktkapitalisierung"] = f"{quote_info['Marktkapitalisierung']:,}"
+            if isinstance(quote_info.get("Dividendenrendite"), (int, float)):
+                quote_info["Dividendenrendite"] = f"{quote_info['Dividendenrendite'] * 100:.2f}%"
 
-            return quote, None
-        elif 'Global Quote' in data and not data['Global Quote']:
-             return None, f"Keine Kursdaten für das Symbol '{symbol}' gefunden (leere 'Global Quote')."
-        else:
-             return None, "Unerwartetes Format der API-Antwort für Quote."
+            stock_data['quote_info'] = quote_info
+        except Exception as e:
+            stock_data['quote_info_error'] = f"Kursinformationen konnten nicht extrahiert werden: {e}"
 
-    except requests.exceptions.RequestException as e:
-        return None, f"Netzwerkfehler beim Abrufen des Quotes: {e}"
+
     except Exception as e:
-        return None, f"Unerwarteter Fehler beim Abrufen des Quotes: {e}"
+        stock_data['error'] = f"Allgemeiner Fehler beim Abrufen der Detaildaten für '{ticker_symbol}': {str(e)}"
+        print(f"Fehler in get_stock_detailed_data für {ticker_symbol}: {e}")
+
+    return stock_data
 
 
-def get_time_series_daily(symbol):
-    """ Ruft TIME_SERIES_DAILY (full) von Alpha Vantage ab und bereitet Daten für Chart.js vor. """
-    params = {
-        'function': 'TIME_SERIES_DAILY',
-        'symbol': symbol,
-        'outputsize': 'full', # 'compact' für nur 100 Punkte, 'full' für mehr
-        'apikey': API_KEY
-    }
+def generate_stock_plotly_chart(ticker_symbol, period="1y"):
+    """
+    Generiert das HTML für einen Plotly Candlestick-Chart für einen gegebenen Ticker und Zeitraum.
+    """
+    chart_html = None
+    error_msg = None
+    company_name = ticker_symbol  # Fallback
+
     try:
-        response = requests.get(ALPHA_VANTAGE_URL, params=params, timeout=20) # Längerer Timeout für 'full'
-        response.raise_for_status()
-        data = response.json()
+        stock = yf.Ticker(ticker_symbol)
 
-        if 'Error Message' in data:
-            return None, None, f"API Fehler (Zeitreihe): {data['Error Message']}"
-        if 'Note' in data:
-             # Wichtig bei 'full', da das Limit schnell erreicht werden kann
-            print(f"API Hinweis (Zeitreihe): {data['Note']}")
-            # Wenn ein Hinweis kommt, können trotzdem Daten vorhanden sein! Weiter versuchen.
+        # Name für den Titel holen (optional, könnte auch von außen kommen)
+        info_temp = stock.info
+        if info_temp and (info_temp.get('longName') or info_temp.get('shortName')):
+            company_name = info_temp.get('longName', info_temp.get('shortName', ticker_symbol))
 
-        if 'Time Series (Daily)' in data:
-            time_series = data['Time Series (Daily)']
-            # Daten sind als Dict {datum_str: {werte}}, wir brauchen Listen
-            # Sortieren nach Datum (Schlüssel des Dicts) aufsteigend
-            sorted_dates = sorted(time_series.keys())
+        hist_data = stock.history(period=period)
 
-            dates = []
-            prices = []
-            for date_str in sorted_dates:
-                # Nur gültige Datumsformate verarbeiten
-                try:
-                    datetime.strptime(date_str, '%Y-%m-%d') # Validierung
-                    dates.append(date_str)
-                    # Nimm den Schlusskurs ('4. close')
-                    prices.append(float(time_series[date_str].get('4. close', 0))) # Als float speichern
-                except (ValueError, TypeError):
-                    print(f"Überspringe ungültigen Datumseintrag: {date_str}")
-                    continue
-
-            if not dates: # Fallback, falls trotz 'Time Series (Daily)' keine gültigen Daten drin waren
-                 return None, None, "Keine gültigen Zeitreihendaten gefunden nach der Verarbeitung."
-
-            return dates, prices, None # Listen (Labels, Datenpunkte), kein Fehler
+        if hist_data.empty:
+            error_msg = f"Keine historischen Kursdaten für '{ticker_symbol}' im Zeitraum '{period}' gefunden."
         else:
-            # Fehler, wenn trotz erfolgreicher Antwort der erwartete Key fehlt
-             error_msg = "Antwort enthält keinen 'Time Series (Daily)'-Schlüssel."
-             if 'Information' in data: # Manchmal gibt es Infos statt Fehlern
-                 error_msg += f" Info: {data['Information']}"
-             return None, None, error_msg
+            fig = go.Figure()
+            fig.add_trace(go.Candlestick(x=hist_data.index,
+                                         open=hist_data['Open'],
+                                         high=hist_data['High'],
+                                         low=hist_data['Low'],
+                                         close=hist_data['Close'],
+                                         name=f'{ticker_symbol}'))
 
+            fig.update_layout(
+                title=f'Kursverlauf: {company_name} ({ticker_symbol}) - {period}',
+                xaxis_title='Datum',
+                yaxis_title='Preis',
+                xaxis_rangeslider_visible=True,
+                margin=dict(l=20, r=20, t=50, b=20)
+            )
+            chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
 
-    except requests.exceptions.RequestException as e:
-        return None, None, f"Netzwerkfehler bei Zeitreihenabruf: {e}"
     except Exception as e:
-        return None, None, f"Unerwarteter Fehler bei Zeitreihenabruf: {e}"
+        error_msg = f"Fehler beim Generieren des Charts für '{ticker_symbol}': {str(e)}"
+        print(f"Fehler in generate_stock_plotly_chart für {ticker_symbol}: {e}")
+        if "404 Client Error" in str(e) or "No data found" in str(e).lower():
+            error_msg = f"Keine Chartdaten für '{ticker_symbol}' gefunden. Der Ticker könnte falsch oder dekotiert sein."
+        elif "429 Client Error" in str(e):
+            error_msg = f"Zu viele Anfragen an den Datenprovider für '{ticker_symbol}'. Bitte später erneut versuchen."
+
+    return chart_html, error_msg, company_name
+
+
+# -- FLASK ROUTEN --
 
 @app.route('/', methods=['GET'])
-def search_page():
-    # ... (unverändert) ...
-    query = request.args.get('query', None)
-    results = None
-    error = None
-    if query:
-        results, error = search_alpha_vantage(query)
-    return render_template('search.html', query=query, results=results, error=error)
+def landing_page():
+    # Leitet direkt zur Suchseite weiter oder zeigt eine einfache Willkommensnachricht
+    return redirect(url_for('search_stock_page'))
+    # Alternativ: return render_template('landing_page.html')
 
-@app.route('/graph', methods=['GET', 'POST'])
-def index():
-    chart_html = None
-    error = None
-    current_ticker = None
-    company_name = None
 
+@app.route('/search', methods=['GET', 'POST'])
+def search_stock_page():
+    error = None
     if request.method == 'POST':
-        ticker_symbol = request.form.get('ticker', '').strip().upper()
-        current_ticker = ticker_symbol
-
-        if not ticker_symbol:
+        ticker_query = request.form.get('ticker_query', '').strip().upper()
+        if not ticker_query:
             error = "Bitte gib einen Aktien-Ticker ein."
         else:
-            try:
-                stock = yf.Ticker(ticker_symbol)
-                # Versuche, grundlegende Informationen abzurufen, um die Gültigkeit zu prüfen
-                info = stock.info
-                if not info or 'shortName' not in info: # Manchmal ist info leer für ungültige Ticker
-                    error = f"Keine Informationen für Ticker '{ticker_symbol}' gefunden. Ist der Ticker korrekt?"
-                else:
-                    company_name = info.get('longName', info.get('shortName', ticker_symbol))
+            # Validieren, ob der Ticker grundlegende Infos liefert
+            basic_info, info_error = get_stock_basic_info(ticker_query)
+            if info_error or not basic_info:
+                error = info_error if info_error else f"Ticker '{ticker_query}' nicht gefunden oder ungültig."
+            else:
+                # Wenn valide, zur Detailseite weiterleiten
+                return redirect(url_for('stock_detail_page', ticker_symbol=ticker_query))
 
-                    # Hole historische Daten (z.B. für das letzte Jahr)
-                    # Weitere Optionen für period: "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"
-                    hist_data = stock.history(period="1y")
-
-                    if hist_data.empty:
-                        error = f"Keine historischen Daten für '{ticker_symbol}' gefunden."
-                    else:
-                        # Erstelle den Plotly Chart
-                        fig = go.Figure()
-
-                        # Candlestick Chart
-                        fig.add_trace(go.Candlestick(x=hist_data.index,
-                                        open=hist_data['Open'],
-                                        high=hist_data['High'],
-                                        low=hist_data['Low'],
-                                        close=hist_data['Close'],
-                                        name='Candlestick'))
-
-                        # Optional: Gleitender Durchschnitt hinzufügen
-                        # hist_data['MA20'] = hist_data['Close'].rolling(window=20).mean()
-                        # fig.add_trace(go.Scatter(x=hist_data.index, y=hist_data['MA20'], mode='lines', name='MA20', line=dict(color='orange')))
+    # Bei GET oder wenn Fehler im POST auftritt, Suchseite anzeigen
+    return render_template('search_page.html', error=error, query=request.form.get('ticker_query', ''))
 
 
-                        fig.update_layout(
-                            title=f'Aktienkurs: {company_name} ({ticker_symbol})',
-                            xaxis_title='Datum',
-                            yaxis_title='Preis (USD)', # Annahme: USD, kann je nach Aktie variieren
-                            xaxis_rangeslider_visible=False # Schaltet den Range Slider unter dem Chart an/aus
-                        )
+@app.route('/stock/<string:ticker_symbol>')
+def stock_detail_page(ticker_symbol):
+    ticker_symbol = ticker_symbol.upper()  # Sicherstellen, dass Ticker groß geschrieben ist
 
-                        # Konvertiere den Plotly Chart in HTML
-                        # include_plotlyjs='cdn' lädt Plotly.js von einem CDN, sodass es nicht lokal eingebunden werden muss.
-                        chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+    # 1. Detaillierte Daten abrufen
+    stock_details = get_stock_detailed_data(ticker_symbol)
 
-            except Exception as e:
-                # yfinance kann verschiedene Fehler werfen, z.B. wenn der Ticker nicht existiert
-                error = f"Fehler beim Abrufen der Daten für '{ticker_symbol}': {str(e)}"
-                print(f"Ein Fehler ist aufgetreten: {e}") # Für Debugging in der Konsole
+    # 2. Chart generieren (Standardmäßig 1 Jahr)
+    chart_period = request.args.get('period', '1y')  # Erlaube Zeitraumänderung über URL-Parameter
+    chart_html, chart_error, _ = generate_stock_plotly_chart(ticker_symbol, period=chart_period)
 
-    return render_template('graph.html',
+    # Wenn get_stock_detailed_data einen Fehler hatte, diesen anzeigen
+    if stock_details.get('error') and not chart_error:  # Wenn Detail-Fehler, aber Chart-Fehler vielleicht nicht
+        overall_error = stock_details['error']
+    else:
+        overall_error = chart_error  # oder der Chart Fehler
+
+    return render_template('stock_detail_page.html',
+                           ticker=ticker_symbol,
+                           details=stock_details,  # Enthält .name, .info, .financials_html etc. und evtl. .error
                            chart_html=chart_html,
-                           error=error,
-                           current_ticker=current_ticker,
-                           company_name=company_name)
+                           current_period=chart_period,
+                           error=overall_error)  # Übergibt den Fehler an das Template
 
-@app.route('/stock', methods=['GET'])
-def stock_detail_page():
-    """ Zeigt die Detailseite mit Quote und Chart. """
-    symbol = request.args.get('symbol', None)
-    quote = None
-    quote_error = None
-    chart_dates = None
-    chart_prices = None
-    chart_error = None
 
-    if not symbol:
-        return redirect(url_for('search_page'))
+@app.route('/test_graph')
+def test_graph_page():
+    fixed_ticker = "AAPL"  # Test-Ticker
+    period = "6mo"  # Test-Zeitraum
 
-    # Quote abrufen
-    quote, quote_error = get_quote_alpha_vantage(symbol)
+    chart_html, error_msg, company_name = generate_stock_plotly_chart(fixed_ticker, period=period)
 
-    # Zeitreihe für Chart abrufen
-    chart_dates, chart_prices, chart_error = get_time_series_daily(symbol)
-
-    # Währung aus Quote holen (falls vorhanden) für Chart-Label
-    currency = quote.get('currency', '') if quote else ''
-
-    # Daten für das Template vorbereiten
-    # WICHTIG: Übergebe Daten als JSON-String, damit JavaScript sie direkt nutzen kann
-    # Flask's `tojson` Filter ist sicher dafür
-    template_data = {
-        "symbol": symbol,
-        "quote": quote,
-        "quote_error": quote_error,
-        "chart_dates_json": json.dumps(chart_dates) if chart_dates else 'null',
-        "chart_prices_json": json.dumps(chart_prices) if chart_prices else 'null',
-        "chart_error": chart_error,
-        "currency": currency
-    }
-
-    return render_template('stock_detail.html', **template_data) # Entpackt das Dict als Keyword-Argumente
+    return render_template('test_graph_page.html',
+                           ticker=fixed_ticker,
+                           company_name=company_name,
+                           chart_html=chart_html,
+                           error=error_msg,
+                           period=period)
 
 
 if __name__ == '__main__':
