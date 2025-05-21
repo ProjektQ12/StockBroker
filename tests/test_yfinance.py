@@ -38,14 +38,13 @@ def low_level_yfinance_tests():
     # 1. Grundlegender Netzwerk- und DNS-Test mit 'requests'
     print_test_header(f"1. Grundlegender Netzwerk-Test zu {YAHOO_TEST_URL}")
     try:
-        pass
-        #response = requests.get(YAHOO_TEST_URL, timeout=10)  # 10 Sekunden Timeout
-        #response.raise_for_status()  # Löst einen Fehler aus für HTTP-Fehlercodes (4xx oder 5xx)
-        #print_success(f"HTTP GET-Anfrage an {YAHOO_TEST_URL} erfolgreich (Status: {response.status_code}).")
-        #if "fc.yahoo.com" in response.text or "finance.yahoo.com" in response.text:
-            #print_success("Antwort scheint von Yahoo zu stammen.")
-        #else:
-            #print_warning("Antwort erhalten, aber Inhalt nicht wie erwartet von Yahoo Finance.")
+        response = requests.get(YAHOO_TEST_URL, headers = {'User-agent': 'your bot 0.1'}, timeout=10)  # 10 Sekunden Timeout
+        response.raise_for_status()  # Löst einen Fehler aus für HTTP-Fehlercodes (4xx oder 5xx)
+        print_success(f"HTTP GET-Anfrage an {YAHOO_TEST_URL} erfolgreich (Status: {response.status_code}).")
+        if "fc.yahoo.com" in response.text or "finance.yahoo.com" in response.text:
+            print_success("Antwort scheint von Yahoo zu stammen.")
+        else:
+            print_warning("Antwort erhalten, aber Inhalt nicht wie erwartet von Yahoo Finance.")
     except requests.exceptions.ConnectionError as e:
         print_error(f"Verbindungsfehler zu {YAHOO_TEST_URL}. Mögliches DNS- oder Netzwerkproblem.", e)
         if "Could not resolve host" in str(e):

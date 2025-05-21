@@ -1,7 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 import yfinance as yf
 import plotly.graph_objects as go
+import os
 import pandas as pd
+from Fabius import account_management as FB
 
 app = Flask(__name__)
 
@@ -14,6 +16,203 @@ AVAILABLE_PERIODS = [
 AVAILABLE_QUALITIES = [
     ("high", "Hoch"), ("normal", "Normal"), ("low", "Niedrig")
 ]
+
+
+# --- DEIN FABIUS-MODUL (ALS DUMMY ZUM TESTEN) ---
+class FabiusLogik:
+    """
+    Dies simuliert dein Authentifizierungsmodul 'fabius'.
+    Ersetze dies durch den tatsächlichen Import und die Verwendung deines Moduls.
+    """
+
+    def __init__(self):
+        # Hier könntest du z.B. eine Datenbankverbindung initialisieren, falls nötig
+        self.users = {  # Dummy-Datenbank für User
+            "test@example.com": {"password_hash": "hashed_password_for_test", "user_id": "fab_user_1",
+                                 "username": "Test User"},
+            "taken@example.com": {"password_hash": "hashed_password_for_taken", "user_id": "fab_user_2",
+                                  "username": "Taken User"}
+        }
+        self.password_reset_tokens = {  # Dummy-Speicher für Reset-Token
+            "valid_token_123": "test@example.com"
+        }
+
+    def _verify_password(self, plain_password, hashed_password):
+        # In einer echten Anwendung: bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
+        return plain_password == "password"  # Vereinfacht für Dummy
+
+    def login(self, email, password):
+        user_data = self.users.get(email)
+        if user_data and self._verify_password(password, user_data["password_hash"]):
+            return {'success': True, 'message': 'Login erfolgreich!', 'user_id': user_data["user_id"], 'email': email}
+        return {'success': False, 'message': 'Ungültige E-Mail oder Passwort.'}
+
+    def create_account(self, email, password, username=None):
+        if email in self.users:
+            return {'success': False, 'message': 'Diese E-Mail-Adresse ist bereits registriert.'}
+
+        # In einer echten Anwendung: Passwort hashen!
+        # hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        new_user_id = f"fab_user_{len(self.users) + 1}"
+        self.users[email] = {"password_hash": f"hashed_{password}", "user_id": new_user_id,
+                             "username": username or email}
+        print(f"Neuer User erstellt (dummy): {email}, ID: {new_user_id}")
+        return {'success': True, 'message': 'Konto erfolgreich erstellt. Bitte logge dich ein.'}
+
+    def request_password_reset(self, email):
+        if email in self.users:
+            # In einer echten Anwendung: Token generieren, speichern und E-Mail senden
+            dummy_token = f"valid_token_{email.split('@')[0]}"
+            self.password_reset_tokens[dummy_token] = email
+            print(f"Passwort-Reset-Token für {email} generiert (dummy): {dummy_token}")
+            print(f"Reset-Link wäre: /reset-password/{dummy_token}")
+        # Aus Sicherheitsgründen immer die gleiche Meldung
+        return {'success': True,
+                'message': 'Wenn ein Konto mit dieser E-Mail existiert, wurde eine Anleitung zum Zurücksetzen gesendet.'}
+
+    def verify_reset_token(self, token):
+        if token in self.password_reset_tokens:
+            return {'success': True, 'message': 'Token gültig.', 'email': self.password_reset_tokens[token]}
+        return {'success': False, 'message': 'Ungültiger oder abgelaufener Token.'}
+
+    def reset_password_with_token(self, token, new_password):
+        if token in self.password_reset_tokens:
+            email = self.password_reset_tokens[token]
+            if email in self.users:
+                # In einer echten Anwendung: Neues Passwort hashen und in DB speichern
+                self.users[email]["password_hash"] = f"hashed_{new_password}"
+                del self.password_reset_tokens[token]  # Token nach Gebrauch ungültig machen
+                print(f"Passwort für {email} zurückgesetzt (dummy).")
+                return {'success': True, 'message': 'Dein Passwort wurde erfolgreich zurückgesetzt.'}
+            return {'success': False, 'message': 'Benutzerkonto nicht gefunden (interner Fehler).'}
+        return {'success': False, 'message': 'Ungültiger Token.'}
+
+
+# --- Ende DEIN FABIUS-MODUL ---
+
+fb = FabiusLogik()  # Hier instanziierst du dein Fabius-Objekt
+# Wenn dein Modul nur aus Funktionen besteht, z.B. fabius.login(), dann
+# würdest du direkt fabius.login() aufrufen statt fb.login() und keine Instanz erstellen.
+
+# Dein existierender Flask App Code hier...
+# app = Flask(__name__) # Falls noch nicht vorhanden
+app.secret_key = os.urandom(24)
+
+
+# --- Die Flask Routen (@app.route('/login'), etc.) bleiben GENAU GLEICH wie im vorherigen Beispiel! ---
+# Sie sind bereits so geschrieben, dass sie mit einem Objekt `fb` arbeiten, das die Methoden
+# `login`, `create_account` etc. hat und Dictionaries zurückgibt.
+
+@app.route('/login', methods=['GET', 'POST'])
+def login_page():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard_page'))  # Ziel nach Login
+
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+
+        if not email or not password:
+            flash('Bitte E-Mail und Passwort eingeben.', 'error')
+        else:
+            result = fb.login(email, password)  # Aufruf deiner Fabius-Funktion
+            if result.get('success'):
+                session['user_id'] = result.get('user_id')
+                session['user_email'] = result.get('email', email)  # Email aus Resultat nehmen, falls vorhanden
+                flash(result.get('message', 'Login erfolgreich!'), 'success')
+                return redirect(url_for('dashboard_page'))  # Deine Hauptseite nach Login
+            else:
+                flash(result.get('message', 'Login fehlgeschlagen.'), 'error')
+
+    return render_template('auth/login.html')
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register_page():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard_page'))
+
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        password_confirm = request.form.get('password_confirm')
+        # username = request.form.get('username') # Falls du einen Username hast
+
+        if not email or not password or not password_confirm:
+            flash('Bitte alle Felder ausfüllen.', 'error')
+        elif password != password_confirm:
+            flash('Die Passwörter stimmen nicht überein.', 'error')
+        elif len(password) < 6:
+            flash('Das Passwort muss mindestens 6 Zeichen lang sein.', 'error')
+        else:
+            result = fb.create_account(email, password)  # Ggf. username übergeben
+            if result.get('success'):
+                flash(result.get('message', 'Konto erstellt! Bitte logge dich ein.'), 'success')
+                return redirect(url_for('login_page'))
+            else:
+                flash(result.get('message', 'Registrierung fehlgeschlagen.'), 'error')
+
+    return render_template('auth/register.html')
+
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    session.pop('user_email', None)
+    flash('Du wurdest erfolgreich ausgeloggt.', 'info')
+    return redirect(url_for('login_page'))
+
+
+@app.route('/reset-password-request', methods=['GET', 'POST'])
+def reset_password_request_page():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        if not email:
+            flash('Bitte gib deine E-Mail-Adresse ein.', 'error')
+        else:
+            result = fb.request_password_reset(email)
+            flash(result.get('message', 'Anweisungen gesendet, falls Konto existiert.'), 'info')
+            return render_template('auth/reset_request.html', email_sent=True)
+
+    return render_template('auth/reset_request.html', email_sent=False)
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password_confirm_page(token):
+    token_verification = fb.verify_reset_token(token)
+    if not token_verification.get('success'):
+        flash(token_verification.get('message', 'Ungültiger oder abgelaufener Link.'), 'error')
+        return redirect(url_for('login_page'))
+
+    if request.method == 'POST':
+        new_password = request.form.get('new_password')
+        new_password_confirm = request.form.get('new_password_confirm')
+
+        if not new_password or not new_password_confirm:
+            flash('Bitte gib das neue Passwort zweimal ein.', 'error')
+        elif new_password != new_password_confirm:
+            flash('Die neuen Passwörter stimmen nicht überein.', 'error')
+        elif len(new_password) < 6:
+            flash('Das neue Passwort muss mindestens 6 Zeichen lang sein.', 'error')
+        else:
+            result = fb.reset_password_with_token(token, new_password)
+            if result.get('success'):
+                flash(result.get('message', 'Passwort erfolgreich geändert.'), 'success')
+                return redirect(url_for('login_page'))
+            else:
+                flash(result.get('message', 'Fehler beim Ändern des Passworts.'), 'error')
+
+    return render_template('auth/reset_confirm.html', token=token)
+
+
+# Beispiel für eine Seite, die Login erfordert
+@app.route('/dashboard')  # Deine geschützte Hauptseite
+def dashboard_page():  # Name geändert, um Kollision mit YFinance-Index zu vermeiden
+    if 'user_id' not in session:
+        flash('Bitte logge dich ein, um diese Seite zu sehen.', 'warning')
+        return redirect(url_for('login_page'))
+    user_email = session.get('user_email', 'Unbekannter User')
+    return render_template('dashboard.html', user_email=user_email)
 
 
 # -- HELPER FUNKTIONEN (get_stock_basic_info, get_stock_detailed_data, determine_actual_interval_and_period bleiben wie im vorherigen Schritt) --
@@ -191,8 +390,19 @@ def generate_stock_plotly_chart(ticker_symbol, period="1y", interval="1d", quali
                 margin=dict(l=40, r=20, t=80, b=40)
             )
 
-            if remove_gaps:  # Hier wird der neue Parameter verwendet
+            if remove_gaps:
+                print(f"DEBUG: remove_gaps ist True. Versuche Wochenenden zu entfernen.")
+                print(f"DEBUG: X-Achsen-Typ vor rangebreak: {fig.layout.xaxis.type}")
+                if not hist_data.empty:
+                    print(
+                        f"DEBUG: Erster Zeitstempel: {hist_data.index[0]}, Letzter Zeitstempel: {hist_data.index[-1]}")
+                    print(f"DEBUG: Zeitzone des Index: {hist_data.index.tz}")
+
                 fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
+                # Test: Was passiert, wenn wir den Typ explizit setzen?
+                # fig.update_layout(xaxis_type='date') # Normalerweise nicht nötig, Plotly sollte es erkennen
+            else:
+                print(f"DEBUG: remove_gaps ist False. Wochenenden werden nicht entfernt.")
 
             chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
 

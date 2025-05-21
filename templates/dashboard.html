@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 800px; margin: 20px auto; text-align:center;">
+    <h1>Willkommen auf deinem Dashboard, {{ user_email }}!</h1>
+    <p>Hier könntest du deine personalisierten Inhalte anzeigen.</p>
+    <p><a href="{{ url_for('yfinance_index_page') }}">Zur Aktienanalyse</a></p> {# Beispiel-Link zu deiner Aktien-App #}
+</div>
+{% endblock %}
