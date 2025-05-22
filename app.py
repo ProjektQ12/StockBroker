@@ -3,9 +3,28 @@ import yfinance as yf
 import plotly.graph_objects as go
 import os
 import pandas as pd
-from Fabius import account_management as acc
+from backend.account_management import ENDPOINT as acc
+
+
+
+#####   ###   ####   #####  #   #   ####
+#      #   #  #   #    #    #   #  #
+###    #####  ####     #    #   #   ###
+#      #   #  #   #    #    #   #      #
+#      #   #  ####   #####   ###   ####
+
+#####  ####   ####   #####  #   #  #####  ####   #   #
+#      #   #  #   #    #    ##  #  #      #   #  ##  #
+###    ####   ####     #    # # #  ###    ####   # # #
+#      #  #   #  #     #    #  ##  #      #  #   #  ##
+#####  #   #  #   #  #####  #   #  #####  #   #  #   #
+
+#Dass er Pullen muss
+
 
 app = Flask(__name__)
+app.secret_key = os.urandom(24)
+
 
 # -- Konstanten für Dropdown-Optionen (bleiben gleich) --
 AVAILABLE_PERIODS = [
@@ -17,20 +36,6 @@ AVAILABLE_QUALITIES = [
     ("high", "Hoch"), ("normal", "Normal"), ("low", "Niedrig")
 ]
 
-
-
-fb = FabiusLogik()  # Hier instanziierst du dein Fabius-Objekt
-# Wenn dein Modul nur aus Funktionen besteht, z.B. fabius.login(), dann
-# würdest du direkt fabius.login() aufrufen statt fb.login() und keine Instanz erstellen.
-
-# Dein existierender Flask App Code hier...
-# app = Flask(__name__) # Falls noch nicht vorhanden
-app.secret_key = os.urandom(24)
-
-
-# --- Die Flask Routen (@app.route('/login'), etc.) bleiben GENAU GLEICH wie im vorherigen Beispiel! ---
-# Sie sind bereits so geschrieben, dass sie mit einem Objekt `fb` arbeiten, das die Methoden
-# `login`, `create_account` etc. hat und Dictionaries zurückgibt.
 
 @app.route('/login', methods=['GET', 'POST'])
 def login_page():
@@ -44,7 +49,7 @@ def login_page():
         if not email or not password:
             flash('Bitte E-Mail und Passwort eingeben.', 'error')
         else:
-            result = fb.login(email, password)  # Aufruf deiner Fabius-Funktion
+            result = acc.login(email, password)  # Aufruf deiner backend-Funktion
             if result.get('success'):
                 session['user_id'] = result.get('user_id')
                 session['user_email'] = result.get('email', email)  # Email aus Resultat nehmen, falls vorhanden
@@ -67,14 +72,11 @@ def register_page():
         password_confirm = request.form.get('password_confirm')
         # username = request.form.get('username') # Falls du einen Username hast
 
-        if not email or not password or not password_confirm:
-            flash('Bitte alle Felder ausfüllen.', 'error')
-        elif password != password_confirm:
+        if password != password_confirm:
             flash('Die Passwörter stimmen nicht überein.', 'error')
-        elif len(password) < 6:
-            flash('Das Passwort muss mindestens 6 Zeichen lang sein.', 'error')
+
         else:
-            result = fb.create_account(email, password)  # Ggf. username übergeben
+            result = acc.create_account(password, email)  # Ggf. username übergeben
             if result.get('success'):
                 flash(result.get('message', 'Konto erstellt! Bitte logge dich ein.'), 'success')
                 return redirect(url_for('login_page'))
@@ -99,7 +101,7 @@ def reset_password_request_page():
         if not email:
             flash('Bitte gib deine E-Mail-Adresse ein.', 'error')
         else:
-            result = fb.request_password_reset(email)
+            result = acc.request_password_reset()
             flash(result.get('message', 'Anweisungen gesendet, falls Konto existiert.'), 'info')
             return render_template('auth/reset_request.html', email_sent=True)
 
@@ -108,7 +110,7 @@ def reset_password_request_page():
 
 @app.route('/reset-password/<token>', methods=['GET', 'POST'])
 def reset_password_confirm_page(token):
-    token_verification = fb.verify_reset_token(token)
+    token_verification = acc.verify_reset_token(token)
     if not token_verification.get('success'):
         flash(token_verification.get('message', 'Ungültiger oder abgelaufener Link.'), 'error')
         return redirect(url_for('login_page'))
@@ -124,7 +126,7 @@ def reset_password_confirm_page(token):
         elif len(new_password) < 6:
             flash('Das neue Passwort muss mindestens 6 Zeichen lang sein.', 'error')
         else:
-            result = fb.reset_password_with_token(token, new_password)
+            result = acc.reset_password_with_token(token, new_password)
             if result.get('success'):
                 flash(result.get('message', 'Passwort erfolgreich geändert.'), 'success')
                 return redirect(url_for('login_page'))

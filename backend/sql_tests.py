@@ -22,11 +22,11 @@ def test_account():
     print(cursor.fetchone())
 # def test_insert():
 #    sql_command="""INSERT INTO all_users (username, password_hash, email) \
-#                VALUES ('Fabius','3bc49b73','fabius.werner@outlook.de') """
+#                VALUES ('backend','3bc49b73','fabius.werner@outlook.de') """
 #    result_print(connection.execute(sql_command))
 #
 # def test_execute():
-#     sql_command="""SELECT username FROM all_users WHERE username='Fabius'"""
+#     sql_command="""SELECT username FROM all_users WHERE username='backend'"""
 #     result_print(connection.execute(sql_command))
 #
 # def result_print(cursor:sqlite3.Cursor):

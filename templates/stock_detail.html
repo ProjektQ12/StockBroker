@@ -5,7 +5,7 @@
     {% if chart_error %}
         {# Fehleranzeige wie zuvor #}
         <p class="error">Fehler beim Laden der Chart-Daten: {{ chart_error }}</p>
-        <script>console.error("Chart Error from Backend:", {{ chart_error|tojson }});</script>
+        <script>console.error("Chart Error from backend:", {{ chart_error|tojson }});</script>
     {% elif chart_dates_json != 'null' and chart_prices_json != 'null' %} {# Prüfung im Template bleibt sinnvoll #}
         {# Buttons für Zeitrahmen (unverändert) #}
         <div class="timeframe-buttons" style="margin-bottom: 15px;">
@@ -27,9 +27,9 @@
         <script>
             console.log("--- Chart Script Start ---");
 
-            // 1. Daten vom Backend übernehmen (KEIN JSON.parse mehr nötig!)
+            // 1. Daten vom backend übernehmen (KEIN JSON.parse mehr nötig!)
             // Jinja2 mit |safe fügt die Daten direkt als JS-Literal ein.
-            // Wenn das Backend 'null' (als String) sendet, wird hier das JS-null eingefügt.
+            // Wenn das backend 'null' (als String) sendet, wird hier das JS-null eingefügt.
             const allDates = {{ chart_dates_json|safe }};
             const allPrices = {{ chart_prices_json|safe }};
             const stockSymbol = {{ symbol|tojson }}; // tojson ist hier gut für Strings
@@ -213,9 +213,9 @@
         </script>
 
     {% else %}
-        {# Fallback, wenn Backend 'null' gemeldet hat #}
+        {# Fallback, wenn backend 'null' gemeldet hat #}
         <p>Keine Chart-Daten verfügbar für {{ symbol }}.</p>
-        <script>console.warn("Backend reported no chart data available (chart_dates_json or chart_prices_json was null).");</script>
+        <script>console.warn("backend reported no chart data available (chart_dates_json or chart_prices_json was null).");</script>
     {% endif %}
 
     <p style="margin-top: 20px;"><a href="/">Zurück zur Suche</a></p>
