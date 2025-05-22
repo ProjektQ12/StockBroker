@@ -14,14 +14,16 @@ class email:
 
 def account(username, password, email):
     cursor.execute(
-        "INSERT INTO all_users VALUES ('fabius', '3bc49b73e2fb201924d9dcce5fb6d6fd7cfbf58c49be8cc46439c05dc634b151', 'fabius.werner@outlook.de')")
-    cursor.execute("SELECT username FROM all_users WHERE username == 'fabius'")
+        f"INSERT INTO all_users VALUES ('{username}','{my_hash(password)}', '{email}')")
     connection.commit()
     connection.close()
+    cursor.execute(f"SELECT username FROM all_users WHERE username = '{username}'")
+    if cursor.fetchone()==username:
+        return True
 
 
 def search_username(username) -> bool:
-    cursor.execute("SELECT username FROM all_users WHERE username='{username}'")
+    cursor.execute(f"SELECT username FROM all_users WHERE username='{username}'")
     if username == cursor.fetchone():
 
         return True
@@ -30,7 +32,7 @@ def search_username(username) -> bool:
 
 def search_password(username, password) -> bool:
     my_hash(password)
-    cursor.execute("SELECT password_hash FROM all_users WHERE username='{username}'")
+    cursor.execute(f"SELECT password_hash FROM all_users WHERE username='{username}'")
     if (my_hash(password) == cursor.fetchone()):
         return True
     else:
@@ -56,7 +58,7 @@ def create_account(username, password, email):
 def login(username, password):
     if search_username(username) and search_password(username, password):
         my_hash(password)
-        cursor.execute("SELECT password_hash FROM all_users WHERE username='{username}'")
+        cursor.execute(f"SELECT password_hash FROM all_users WHERE username='{username}'")
         if (my_hash(password) == cursor.fetchone()):
             return True
 
