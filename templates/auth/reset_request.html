@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Passwort zurücksetzen{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <h1>Passwort zurücksetzen</h1>
+    {% if not email_sent %}
+        <p style="text-align: center; margin-bottom: 20px; color: #6c757d;">
+            Gib deine E-Mail-Adresse ein. Wenn ein Konto existiert, senden wir dir Anweisungen zum Zurücksetzen.
+        </p>
+        <form method="POST" action="{{ url_for('reset_password_request_page') }}">
+            <div class="form-group">
+                <label for="email">E-Mail-Adresse</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+            <button type="submit" class="form-button">Link zum Zurücksetzen anfordern</button>
+        </form>
+    {% endif %}
+    {# Die Flash-Nachricht wird über base.html angezeigt, wenn email_sent=True ist #}
+    <div class="links">
+        <a href="{{ url_for('login_page') }}">Zurück zum Login</a>
+    </div>
+</div>
+{% endblock %}

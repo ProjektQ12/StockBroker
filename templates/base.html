@@ -3,83 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Aktien App (yfinance){% endblock %}</title>
+    <title>{% block title %}Meine App{% endblock %}</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f0f2f5; color: #1c1e21; line-height: 1.6; }
         .navbar { background-color: #fff; padding: 12px 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
         .navbar .logo a { font-size: 1.5em; color: #0d6efd; text-decoration: none; font-weight: bold; }
         .navbar nav a { margin-left: 20px; color: #333; text-decoration: none; font-size: 1em; }
         .navbar nav a:hover { color: #0d6efd; text-decoration: underline; }
-        .container { max-width: 1100px; margin: 0 auto; background: #fff; padding: 20px 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        h1, h2, h3 { color: #212529; margin-top: 0; }
-        h1 { text-align: center; margin-bottom: 25px; font-size: 2em;}
-        h2 { font-size: 1.6em; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px;}
-        h3 { font-size: 1.3em; margin-top: 25px; margin-bottom:15px; }
-        /* Form styling - slightly adjusted for auth forms */
-        .auth-form { margin-bottom: 25px; display: flex; flex-direction: column; gap: 15px; padding: 20px; background-color:#f8f9fa; border-radius:6px; max-width: 400px; margin-left: auto; margin-right: auto; }
-        .auth-form .form-group { display: flex; flex-direction: column; }
-        .auth-form label { margin-bottom: 5px; font-weight: 500; }
-        .auth-form input[type="text"],
-        .auth-form input[type="email"],
-        .auth-form input[type="password"] { padding: 12px 15px; border: 1px solid #ced4da; border-radius: 6px; font-size: 1em; width: 100%; box-sizing: border-box; }
-        .auth-form input[type="text"]:focus,
-        .auth-form input[type="email"]:focus,
-        .auth-form input[type="password"]:focus { border-color: #86b7fe; outline: 0; box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25); }
-        .auth-form button[type="submit"] { padding: 12px 25px; background-color: #0d6efd; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1em; transition: background-color 0.2s; width: 100%; }
-        .auth-form button[type="submit"]:hover { background-color: #0b5ed7; }
-        .auth-links { text-align: center; margin-top: 15px; font-size: 0.9em; }
-        .auth-links a { color: #0d6efd; text-decoration: none; }
-        .auth-links a:hover { text-decoration: underline; }
-
-        .chart-container { margin-top: 25px; min-height: 450px; background-color: #fff; border-radius: 6px; padding:15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);}
-        .error-box { color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 12px 18px; border-radius: 6px; margin: 20px 0; text-align:center; }
-        .info-box { color: #0c5460; background-color: #d1ecf1; border: 1px solid #bee5eb; padding: 10px; border-radius: 6px; margin-bottom:20px; text-align:center;} /* Added text-align:center */
-        .success-box { color: #155724; background-color: #d4edda; border: 1px solid #c3e6cb; padding: 10px; border-radius: 6px; margin-bottom:20px; text-align:center;} /* Added success-box */
-
-        .data-section { margin-bottom: 30px; }
-        .data-section table { width:100%; border-collapse: collapse; font-size:0.9em; }
-        .data-section th, .data-section td { padding: 8px 10px; border: 1px solid #dee2e6; text-align:left; }
-        .data-section th { background-color: #f8f9fa; }
-        .data-section .table-sm th, .data-section .table-sm td { padding: 5px 8px;} /* Für kompaktere Pandas-Tabellen */
-        .period-selector a { margin-right: 10px; padding: 5px 10px; background-color: #e9ecef; color:#333; border-radius:4px; text-decoration:none; font-size:0.9em;}
-        .period-selector a.active { background-color: #0d6efd; color:white; font-weight:bold;}
-        .footer-link { display: block; text-align: center; margin-top: 30px; color: #6c757d; }
+        .auth-container { max-width: 400px; margin: 50px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        h1, h2 { color: #212529; text-align: center; margin-top: 0; margin-bottom: 25px; }
+        h1 { font-size: 1.8em;}
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 500; color: #495057; }
+        .form-group input[type="email"], .form-group input[type="password"], .form-group input[type="text"] {
+            width: 100%; padding: 12px; border: 1px solid #ced4da; border-radius: 6px; font-size: 1em; box-sizing: border-box;
+        }
+        .form-group input[type="email"]:focus, .form-group input[type="password"]:focus, .form-group input[type="text"]:focus {
+            border-color: #86b7fe; outline: 0; box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+        .form-button {
+            width: 100%; padding: 12px; background-color: #0d6efd; color: white; border: none;
+            border-radius: 6px; cursor: pointer; font-size: 1.1em; font-weight: 500; transition: background-color 0.2s;
+        }
+        .form-button:hover { background-color: #0b5ed7; }
+        .links { margin-top: 25px; text-align: center; font-size: 0.9em; }
+        .links a { color: #0d6efd; text-decoration: none; margin: 0 8px; }
+        .links a:hover { text-decoration: underline; }
+        .flash-messages { list-style: none; padding: 0; margin: 0 0 20px 0; }
+        .flash-messages li { padding: 12px 18px; margin-bottom: 10px; border-radius: 6px; border: 1px solid transparent; }
+        .flash-success { color: #0f5132; background-color: #d1e7dd; border-color: #badbcc; }
+        .flash-error { color: #842029; background-color: #f8d7da; border-color: #f5c2c7; }
+        .flash-info { color: #055160; background-color: #cff4fc; border-color: #b6effb; }
+        .flash-warning { color: #664d03; background-color: #fff3cd; border-color: #ffecb5; }
     </style>
 </head>
 <body>
     <header class="navbar">
-        <div class="logo"><a href="{{ url_for('landing_page') }}">Aktien Analyse</a></div>
+        <div class="logo"><a href="{{ url_for('landing_page') }}">Meine App</a></div>
         <nav>
-            <a href="{{ url_for('search_stock_page') }}">Ticker Suche</a>
-            <a href="{{ url_for('test_graph_page') }}">Test Chart (AAPL)</a>
-            <!-- Auth Links -->
-            {% if current_user and current_user.is_authenticated %}
-                <a href="{{ url_for('account_page') }}">Mein Konto</a>
-                <a href="{{ url_for('logout_action') }}">Logout</a>
+            {% if session.user_id %}
+                <a href="{{ url_for('index_page') }}">Dashboard</a> {# Ersetze index_page #}
+                <a href="{{ url_for('logout') }}">Logout</a>
             {% else %}
                 <a href="{{ url_for('login_page') }}">Login</a>
-                <a href="{{ url_for('create_account_page') }}">Registrieren</a>
+                <a href="{{ url_for('register_page') }}">Registrieren</a>
             {% endif %}
-            <!-- Weitere Links hier -->
         </nav>
     </header>
-    <main class="container">
-        {# --- Flash Nachrichten Anzeige --- #}
+    <main>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
+                <ul class="flash-messages auth-container" style="margin-bottom:20px; max-width:400px;">
                 {% for category, message in messages %}
-                    {% if category == 'error' %}
-                        <div class="error-box">{{ message }}</div>
-                    {% elif category == 'success' %}
-                        <div class="success-box">{{ message }}</div>
-                    {% else %}
-                        <div class="info-box">{{ message }}</div>
-                    {% endif %}
+                    <li class="flash-{{ category }}">{{ message }}</li>
                 {% endfor %}
+                </ul>
             {% endif %}
         {% endwith %}
-        {# --- Ende Flash Nachrichten Anzeige --- #}
-
         {% block content %}{% endblock %}
     </main>
 </body>
