@@ -3,7 +3,7 @@ import yfinance as yf
 import plotly.graph_objects as go
 import os
 import pandas as pd
-from Fabius import account_management as FB
+from Fabius import account_management as acc
 
 app = Flask(__name__)
 
@@ -18,77 +18,6 @@ AVAILABLE_QUALITIES = [
 ]
 
 
-# --- DEIN FABIUS-MODUL (ALS DUMMY ZUM TESTEN) ---
-class FabiusLogik:
-    """
-    Dies simuliert dein Authentifizierungsmodul 'fabius'.
-    Ersetze dies durch den tatsächlichen Import und die Verwendung deines Moduls.
-    """
-
-    def __init__(self):
-        # Hier könntest du z.B. eine Datenbankverbindung initialisieren, falls nötig
-        self.users = {  # Dummy-Datenbank für User
-            "test@example.com": {"password_hash": "hashed_password_for_test", "user_id": "fab_user_1",
-                                 "username": "Test User"},
-            "taken@example.com": {"password_hash": "hashed_password_for_taken", "user_id": "fab_user_2",
-                                  "username": "Taken User"}
-        }
-        self.password_reset_tokens = {  # Dummy-Speicher für Reset-Token
-            "valid_token_123": "test@example.com"
-        }
-
-    def _verify_password(self, plain_password, hashed_password):
-        # In einer echten Anwendung: bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
-        return plain_password == "password"  # Vereinfacht für Dummy
-
-    def login(self, email, password):
-        user_data = self.users.get(email)
-        if user_data and self._verify_password(password, user_data["password_hash"]):
-            return {'success': True, 'message': 'Login erfolgreich!', 'user_id': user_data["user_id"], 'email': email}
-        return {'success': False, 'message': 'Ungültige E-Mail oder Passwort.'}
-
-    def create_account(self, email, password, username=None):
-        if email in self.users:
-            return {'success': False, 'message': 'Diese E-Mail-Adresse ist bereits registriert.'}
-
-        # In einer echten Anwendung: Passwort hashen!
-        # hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        new_user_id = f"fab_user_{len(self.users) + 1}"
-        self.users[email] = {"password_hash": f"hashed_{password}", "user_id": new_user_id,
-                             "username": username or email}
-        print(f"Neuer User erstellt (dummy): {email}, ID: {new_user_id}")
-        return {'success': True, 'message': 'Konto erfolgreich erstellt. Bitte logge dich ein.'}
-
-    def request_password_reset(self, email):
-        if email in self.users:
-            # In einer echten Anwendung: Token generieren, speichern und E-Mail senden
-            dummy_token = f"valid_token_{email.split('@')[0]}"
-            self.password_reset_tokens[dummy_token] = email
-            print(f"Passwort-Reset-Token für {email} generiert (dummy): {dummy_token}")
-            print(f"Reset-Link wäre: /reset-password/{dummy_token}")
-        # Aus Sicherheitsgründen immer die gleiche Meldung
-        return {'success': True,
-                'message': 'Wenn ein Konto mit dieser E-Mail existiert, wurde eine Anleitung zum Zurücksetzen gesendet.'}
-
-    def verify_reset_token(self, token):
-        if token in self.password_reset_tokens:
-            return {'success': True, 'message': 'Token gültig.', 'email': self.password_reset_tokens[token]}
-        return {'success': False, 'message': 'Ungültiger oder abgelaufener Token.'}
-
-    def reset_password_with_token(self, token, new_password):
-        if token in self.password_reset_tokens:
-            email = self.password_reset_tokens[token]
-            if email in self.users:
-                # In einer echten Anwendung: Neues Passwort hashen und in DB speichern
-                self.users[email]["password_hash"] = f"hashed_{new_password}"
-                del self.password_reset_tokens[token]  # Token nach Gebrauch ungültig machen
-                print(f"Passwort für {email} zurückgesetzt (dummy).")
-                return {'success': True, 'message': 'Dein Passwort wurde erfolgreich zurückgesetzt.'}
-            return {'success': False, 'message': 'Benutzerkonto nicht gefunden (interner Fehler).'}
-        return {'success': False, 'message': 'Ungültiger Token.'}
-
-
-# --- Ende DEIN FABIUS-MODUL ---
 
 fb = FabiusLogik()  # Hier instanziierst du dein Fabius-Objekt
 # Wenn dein Modul nur aus Funktionen besteht, z.B. fabius.login(), dann
