@@ -44,27 +44,31 @@ class ENDPOINT:
 
     @staticmethod
     def request_password_reset() -> dict:
+        #SEND EMAIL TU USER
         output = backend_protokol
         return output
 
     @staticmethod
-    def login(username, password) -> dict:
+    def login(username_email, password) -> dict:
+        username_email = username_email.lower()
         connect()
         output = backend_protokol
-        if not search_username(username):
+        if not is_username_there(username_email):
             output["message"] = "Username wurde nicht gefunden. R U 4 real?"
             return output
 
-        if not search_password(username, password):
-            output["message"] = "Wrong password. Do not pretend to be someone else's account!"
+        if not is_email_there(username_email):
+            output["message"] = "Username wurde nicht gefunden. R U 4 real?"
             return output
 
-        #my_hash(password)   Der Output der Funktion geht ins nichts
-        cursor.execute(f"SELECT all_users.password_hash FROM all_users WHERE all_users.username='{username}'")
-        if (my_hash(password) == cursor.fetchone()):
+        if not is_valid_logindata(username_email, password):
             output["success"] = True
-            output["message"] = f"Welcome {username}!"
+            output["message"] = f"Welcome {username_email}!"
+        else:
+            output["message"] = "Wrong password. Do not pretend to be someone else's account!"
+
         return output
+
 
     @staticmethod
     def create_account(password, email, username="temp3"):
@@ -75,7 +79,7 @@ class ENDPOINT:
             return output
 
         connect()
-        if search_username(username):
+        if is_username_there(username):
             output["message"] = "Username schon vergeben! Werde jetzt einzigartig!"
         else:
             if insert_account(username, password, email):
@@ -83,7 +87,7 @@ class ENDPOINT:
                 output["message"] = f"Welcome {username}!"
             else:
                 output["message"] = "Fehler beim Login. Sorry :( !"
-        close()
+        disconnect()
         return output
 
 
@@ -92,26 +96,39 @@ def connect():
     connection = sqlite3.connect("backend/StockBroker.db")
     cursor = connection.cursor()
 
-def close():
+def disconnect():
     global connection, cursor
     connection.commit()
     connection.close()
+
 
 
 def insert_account(username, password, email) -> bool: #Habe ich umbenannt, damit klar ist, was passiert
     cursor.execute(
         f"INSERT INTO all_users VALUES ('{username}','{my_hash(password)}', '{email}')")
     cursor.execute(f"SELECT username FROM all_users WHERE username = '{username}'")
-    return search_password(username, password)
+    return is_valid_logindata(username, password)
 
-def search_username(username) -> bool:
+def is_username_there(username) -> bool:
     cursor.execute(f"SELECT username FROM all_users WHERE username='{username}'")
     sql_output = cursor.fetchone()
     #print(f"searched username {username}, found: {sql_output}")
-    return not sql_output is None
+    if not sql_output is None:
+        return True
+    else:
+        return False
+
+def is_email_there(email) -> bool:
+    cursor.execute(f"SELECT email FROM all_users WHERE email='{email}'")
+    sql_output = cursor.fetchone()
+    #print(f"searched username {username}, found: {sql_output}")
+    if not sql_output is None:
+        return True
+    else:
+        return False
 
 
-def search_password(username, password) -> bool:
+def is_valid_logindata(username, password) -> bool:
     #my_hash(password) macht nichts
     cursor.execute(f"SELECT password_hash FROM all_users WHERE username='{username}'")
     sql_output = cursor.fetchone()

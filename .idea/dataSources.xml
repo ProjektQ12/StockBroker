@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
-    <data-source source="LOCAL" name="StockBroker.db" uuid="5f430cf5-706d-4932-81a1-5f4e515fb910">
+    <data-source source="LOCAL" name="StockBroker.db" uuid="d7ce1828-63d4-49a3-aebe-af22670de9a9">
       <driver-ref>sqlite.xerial</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
-      <jdbc-url>jdbc:sqlite:C:\Users\rickd\PycharmProjects\StockBroker\backend\StockBroker.db</jdbc-url>
+      <jdbc-url>jdbc:sqlite:backend/StockBroker.db</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
   </component>
