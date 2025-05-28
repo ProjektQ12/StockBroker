@@ -10,10 +10,12 @@ def test_db():
         print("yesssss")
 
 
-def get_all():
-    sql_command = "SELECT username, password_hash, email FROM all_users"
+def get_all_users() -> list[dict]:
+    sql_command = "SELECT username, password_hash, email, geld FROM all_users"
+    keys = ["username", "password_hash", "email", "geld"]
     cursor.execute(sql_command)
-    print(cursor.fetchall())
+    out = [{k: v for k, v in zip(keys, values)} for values in cursor.fetchall()]
+    return out
 
 
 def test_account():
@@ -38,6 +40,6 @@ def test_account():
 # get_all()
 # test_account()
 # get_all()
-
+print(get_all())
 connection.commit()
 connection.close()

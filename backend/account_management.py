@@ -91,6 +91,13 @@ class ENDPOINT:
         disconnect()
         return output
 
+    @staticmethod
+    def get_all_users() -> list[dict]:
+        sql_command = "SELECT username, password_hash, email, geld FROM all_users"
+        keys = ["username", "password_hash", "email", "geld"]
+        cursor.execute(sql_command)
+        out = [{k: v for k, v in zip(keys, values)} for values in cursor.fetchall()]
+        return out
 
 def connect():
     global connection, cursor
