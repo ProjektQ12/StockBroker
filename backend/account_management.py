@@ -53,13 +53,14 @@ class ENDPOINT:
         username_email = username_email.lower()
         connect()
         output = backend_protokol
-        if not is_username_there(username_email):
-            output["message"] = "Username wurde nicht gefunden. R U 4 real?"
-            return output
-
-        if not is_email_there(username_email):
-            output["message"] = "Username wurde nicht gefunden. R U 4 real?"
-            return output
+        if is_email(username_email):
+            if not is_email_there(username_email):
+                output["message"] = "E-mail wurde nicht gefunden. R U 4 real?"
+                return output
+        else:
+            if not is_username_there(username_email):
+                output["message"] = "Username wurde nicht gefunden. R U 4 real?"
+                return output
 
         if not is_valid_logindata(username_email, password):
             output["success"] = True
@@ -150,14 +151,18 @@ def is_format_AXA(input:str, x:str):
         return False
     return (a, b)
 
+def is_email(email: str) -> bool:
+    if is_format_AXA(input, "@"):
+        address, domain = is_format_AXA(input, "@")
+        if is_format_AXA(domain, "."):
+            return True
+    return False
+
+
+
 def verify_input(input: str, is_email:bool=False) -> bool:
     if is_email:
-        if is_format_AXA(input, "@"):
-            address, domain = is_format_AXA(input, "@")
-            if is_format_AXA(domain, "."):
-                return True
-
-        return False
+        return is_email(input)
     return False
 
 
