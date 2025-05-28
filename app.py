@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import os
 import pandas as pd
 from backend.account_management import ENDPOINT as acc
+import trading
 
 
 
@@ -134,6 +135,91 @@ def reset_password_confirm_page(token):
                 flash(result.get('message', 'Fehler beim Ändern des Passworts.'), 'error')
 
     return render_template('auth/reset_confirm.html', token=token)
+
+@app.route('/reset-password-enter-token', methods=['GET', 'POST'])
+def reset_password_enter_token_page():
+    if request.method == 'POST':
+        token = request.form.get('token', '').strip()
+        if not token:
+            flash('Bitte gib deinen Reset-Code ein.', 'error')
+        else:
+            # Weiterleiten zur Bestätigungsseite mit dem eingegebenen Token
+            return redirect(url_for('reset_password_confirm_page', token=token))
+    return render_template('auth/reset_enter_token.html')
+
+
+@app.route('/trade/<string:ticker_symbol>', methods=['GET', 'POST'])
+def trade_page(ticker_symbol):
+    if 'user_id' not in session:  # Login erforderlich
+        flash('Bitte logge dich ein, um zu handeln.', 'warning')
+        return redirect(url_for('login_page', next=request.url))
+
+    ticker_symbol = ticker_symbol.upper()
+    # Prüfen, ob der Ticker gültig ist (rudimentär mit yfinance)
+    basic_info, info_error = get_stock_basic_info(ticker_symbol)
+    if info_error or not basic_info:
+        flash(f"Ticker '{ticker_symbol}' nicht gefunden oder ungültig. Handel nicht möglich.", 'error')
+        return render_template('trade_error.html', ticker=ticker_symbol)
+
+    # Aktueller Trade-Modus (long, short, option) aus URL oder Default
+    trade_mode = request.args.get('mode', 'long')  # Standardmäßig 'long'
+
+    if request.method == 'POST':
+        # Sammle Daten aus dem Formular - abhängig vom trade_mode
+        trade_data = {
+            "user_id": session.get('user_id'),
+            "ticker": ticker_symbol,
+            "trade_type": trade_mode,  # Wichtig für trading.py
+            "timestamp": pd.Timestamp.now().isoformat()  # Zeitstempel
+        }
+
+        if trade_mode == 'long':
+            trade_data['quantity'] = request.form.get('quantity', type=int)
+            trade_data['order_type'] = request.form.get('order_type')  # 'market' or 'limit'
+            if trade_data['order_type'] == 'limit':
+                trade_data['limit_price'] = request.form.get('limit_price', type=float)
+            trade_data['validity'] = request.form.get('validity')  # 'day' or 'gtc'
+            # Füge hier weitere Felder für Long hinzu, falls nötig
+
+        elif trade_mode == 'short':
+            # Hier Felder für Short-Orders sammeln
+            trade_data['quantity'] = request.form.get('quantity_short', type=int)
+            # ... (weitere Short-spezifische Felder)
+            pass  # Platzhalter
+
+        elif trade_mode == 'option':
+            # Hier Felder für Options-Orders sammeln
+            trade_data['option_type'] = request.form.get('option_type_select')  # 'call' or 'put'
+            trade_data['strike_price'] = request.form.get('strike_price_option', type=float)
+            trade_data['expiration_date'] = request.form.get('expiration_date_option')
+            trade_data['quantity_option'] = request.form.get('quantity_option', type=int)
+            # ... (weitere Options-spezifische Felder)
+            pass  # Platzhalter
+
+        # Validierung der Eingaben (Beispiel)
+        if not trade_data.get('quantity') and not trade_data.get('quantity_short') and not trade_data.get(
+                'quantity_option'):
+            flash('Bitte gib eine Menge ein.', 'error')
+        else:
+            # Übergabe an das trading-Modul
+            trade_result = trading.execute_trade(trade_data)
+            if trade_result.get('success'):
+                flash(trade_result.get('message'), 'success')
+                # Ggf. Weiterleitung zu einer Order-Bestätigungsseite oder Depotübersicht
+                return redirect(url_for('trade_page', ticker_symbol=ticker_symbol, mode=trade_mode))
+            else:
+                flash(trade_result.get('message'), 'error')
+
+    # Hole aktuelle Preisinfo für Anzeige (optional, aber nützlich)
+    current_price = basic_info.get('info_dict', {}).get('currentPrice',
+                                                        basic_info.get('info_dict', {}).get('regularMarketPrice',
+                                                                                            'N/A'))
+
+    return render_template('trade_page.html',
+                           ticker=ticker_symbol,
+                           company_name=basic_info.get('name', ticker_symbol),
+                           current_price=current_price,
+                           current_mode=trade_mode)
 
 
 # Beispiel für eine Seite, die Login erfordert

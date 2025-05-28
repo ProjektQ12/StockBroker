@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Handelsfehler{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 600px; text-align:center;">
+    <h1>Handel nicht möglich</h1>
+    <div class="error-box" style="margin-top:20px; margin-bottom:30px;">
+        Der Ticker/WKN "<strong>{{ ticker }}</strong>" konnte nicht gefunden werden oder ist ungültig.
+    </div>
+    <p>Bitte überprüfe die Eingabe oder verwende die Suche, um eine gültige Aktie zu finden.</p>
+    <a href="{{ url_for('search_stock_page') }}" class="form-button" style="display:inline-block; width:auto; text-decoration:none; margin-top:20px;">Zurück zur Suche</a>
+</div>
+{% endblock %}
