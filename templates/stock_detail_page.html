@@ -18,6 +18,14 @@
 
     {# -- Kurs-Chart Bereich -- #}
     {% if not details or not details.error or chart_html %}
+    {% if not details or not details.error %} {# Button nur anzeigen, wenn Ticker valide erscheint #}
+        <div style="text-align: center; margin: 20px 0;">
+            <a href="{{ url_for('trade_page', ticker_symbol=ticker) }}" class="form-button"
+               style="display: inline-block; width: auto; padding: 12px 25px; font-size: 1.1em;">
+                Jetzt {{ ticker }} handeln
+            </a>
+        </div>
+    {% endif %}
     <div class="data-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap;">
             <h2>Kursverlauf</h2>
