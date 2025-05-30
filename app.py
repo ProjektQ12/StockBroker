@@ -7,22 +7,6 @@ from backend.account_management import ENDPOINT as acc
 import trading
 
 
-
-#####   ###   ####   #####  #   #   ####
-#      #   #  #   #    #    #   #  #
-###    #####  ####     #    #   #   ###
-#      #   #  #   #    #    #   #      #
-#      #   #  ####   #####   ###   ####
-
-#####  ####   ####   #####  #   #  #####  ####   #   #
-#      #   #  #   #    #    ##  #  #      #   #  ##  #
-###    ####   ####     #    # # #  ###    ####   # # #
-#      #  #   #  #     #    #  ##  #      #  #   #  ##
-#####  #   #  #   #  #####  #   #  #####  #   #  #   #
-
-#Dass er Pullen muss
-
-
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
@@ -39,27 +23,32 @@ AVAILABLE_QUALITIES = [
 
 
 @app.route('/login', methods=['GET', 'POST'])
+@app.route('/login', methods=['GET', 'POST'])
 def login_page():
     if 'user_id' in session:
-        return redirect(url_for('dashboard_page'))  # Ziel nach Login
+        return redirect(url_for('dashboard_page'))
 
+    form_data = {}  # Für vorausgefüllte Felder bei Fehler
     if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
+        identifier = request.form.get('identifier', '').strip()  # Kann Email oder Username sein
+        password = request.form.get('password', '').strip()
+        form_data['identifier'] = identifier  # Merken für erneute Anzeige
 
-        if not email or not password:
-            flash('Bitte E-Mail und Passwort eingeben.', 'error')
+        if not identifier or not password:
+            flash('Bitte Anmeldedaten eingeben.', 'error')
         else:
-            result = acc.login(email, password)  # Aufruf deiner backend-Funktion
+            result = acc.login(identifier, password)
             if result.get('success'):
                 session['user_id'] = result.get('user_id')
-                session['user_email'] = result.get('email', email)  # Email aus Resultat nehmen, falls vorhanden
+                session['user_email'] = result.get('email')  # acc.login sollte die Email zurückgeben
+                session['username'] = result.get('username')  # und den Username
                 flash(result.get('message', 'Login erfolgreich!'), 'success')
-                return redirect(url_for('dashboard_page'))  # Deine Hauptseite nach Login
+                return redirect(url_for('dashboard_page'))
             else:
                 flash(result.get('message', 'Login fehlgeschlagen.'), 'error')
+                # Hier form_data nicht löschen, wird ans Template übergeben
 
-    return render_template('auth/login.html')
+    return render_template('auth/login.html', form_data=form_data)
 
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -67,46 +56,61 @@ def register_page():
     if 'user_id' in session:
         return redirect(url_for('dashboard_page'))
 
+    form_data = {}  # Für vorausgefüllte Felder bei Fehler
     if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
-        password_confirm = request.form.get('password_confirm')
-        # username = request.form.get('username') # Falls du einen Username hast
+        email = request.form.get('email', '').strip()
+        username = request.form.get('username', '').strip()  # NEU
+        password = request.form.get('password', '').strip()
+        password_confirm = request.form.get('password_confirm', '').strip()
 
-        if password != password_confirm:
+        # Formularwerte für erneute Anzeige merken
+        form_data['email'] = email
+        form_data['username'] = username
+
+        if not email or not username or not password or not password_confirm:
+            flash('Bitte alle Felder ausfüllen.', 'error')
+        elif password != password_confirm:
             flash('Die Passwörter stimmen nicht überein.', 'error')
-
+        # Die Prüfung auf Passwortlänge und ob Email/Username existiert,
+        # sollte deine acc.create_account() Funktion übernehmen und eine passende Fehlermeldung zurückgeben.
         else:
-            result = acc.create_account(password, email)  # Ggf. username übergeben
+            # acc.create_account MUSS jetzt auch den Username als Parameter erwarten
+            result = acc.create_account(password, email, username)
             if result.get('success'):
                 flash(result.get('message', 'Konto erstellt! Bitte logge dich ein.'), 'success')
-                return redirect(url_for('login_page'))
+                return redirect(url_for('login_page'))  # Nach erfolgreicher Registrierung zum Login
             else:
                 flash(result.get('message', 'Registrierung fehlgeschlagen.'), 'error')
+                # Hier form_data nicht löschen, wird ans Template übergeben
 
-    return render_template('auth/register.html')
+    # Übergebe form_data an das Template, damit Felder bei Fehlern vorausgefüllt werden können
+    return render_template('auth/register.html', form_data=form_data)
 
 
+# --- logout, reset_password_request_page, reset_password_confirm_page, dashboard_page bleiben gleich ---
 @app.route('/logout')
 def logout():
     session.pop('user_id', None)
     session.pop('user_email', None)
+    session.pop('username', None)
     flash('Du wurdest erfolgreich ausgeloggt.', 'info')
     return redirect(url_for('login_page'))
 
 
 @app.route('/reset-password-request', methods=['GET', 'POST'])
 def reset_password_request_page():
+    form_data = {}
+    email_sent_flag = False
     if request.method == 'POST':
-        email = request.form.get('email')
+        email = request.form.get('email', '').strip()
+        form_data['email'] = email
         if not email:
             flash('Bitte gib deine E-Mail-Adresse ein.', 'error')
         else:
-            result = acc.request_password_reset()
+            result = acc.request_password_reset(email)
             flash(result.get('message', 'Anweisungen gesendet, falls Konto existiert.'), 'info')
-            return render_template('auth/reset_request.html', email_sent=True)
-
-    return render_template('auth/reset_request.html', email_sent=False)
+            email_sent_flag = True  # Um das Formular auszublenden und nur die Nachricht anzuzeigen
+    return render_template('auth/reset_request.html', email_sent=email_sent_flag, form_data=form_data)
 
 
 @app.route('/reset-password/<token>', methods=['GET', 'POST'])
@@ -133,7 +137,6 @@ def reset_password_confirm_page(token):
                 return redirect(url_for('login_page'))
             else:
                 flash(result.get('message', 'Fehler beim Ändern des Passworts.'), 'error')
-
     return render_template('auth/reset_confirm.html', token=token)
 
 @app.route('/reset-password-enter-token', methods=['GET', 'POST'])
@@ -220,7 +223,6 @@ def trade_page(ticker_symbol):
                            company_name=basic_info.get('name', ticker_symbol),
                            current_price=current_price,
                            current_mode=trade_mode)
-
 
 # Beispiel für eine Seite, die Login erfordert
 @app.route('/dashboard')  # Deine geschützte Hauptseite

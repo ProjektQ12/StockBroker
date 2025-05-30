@@ -12,12 +12,11 @@
         <form method="POST" action="{{ url_for('reset_password_request_page') }}">
             <div class="form-group">
                 <label for="email">E-Mail-Adresse</label>
-                <input type="email" id="email" name="email" required>
+                <input type="email" id="email" name="email" value="{{ form_data.email if form_data and form_data.email else '' }}" required>
             </div>
             <button type="submit" class="form-button">Link zum Zurücksetzen anfordern</button>
         </form>
     {% endif %}
-    {# Die Flash-Nachricht wird über base.html angezeigt, wenn email_sent=True ist #}
     <div class="links">
         <a href="{{ url_for('login_page') }}">Zurück zum Login</a>
         <a href="{{ url_for('reset_password_enter_token_page') }}">Ich habe bereits einen Code</a>

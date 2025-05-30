@@ -7,8 +7,9 @@
     <h1>Login</h1>
     <form method="POST" action="{{ url_for('login_page') }}">
         <div class="form-group">
-            <label for="email">E-Mail-Adresse</label>
-            <input type="email" id="email" name="email" required>
+            <label for="identifier">E-Mail oder Benutzername</label>
+            {# Benutze form_data, um den Wert bei Fehler wieder einzusetzen #}
+            <input type="text" id="identifier" name="identifier" value="{{ form_data.identifier if form_data and form_data.identifier else '' }}" required>
         </div>
         <div class="form-group">
             <label for="password">Passwort</label>

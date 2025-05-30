@@ -6,15 +6,14 @@
 <div class="auth-container">
     <h1>Konto erstellen</h1>
     <form method="POST" action="{{ url_for('register_page') }}">
-        <!-- Optional: Username
         <div class="form-group">
             <label for="username">Benutzername</label>
-            <input type="text" id="username" name="username" required>
+            {# Benutze form_data, um den Wert bei Fehler wieder einzusetzen #}
+            <input type="text" id="username" name="username" value="{{ form_data.username if form_data and form_data.username else '' }}" required>
         </div>
-        -->
         <div class="form-group">
             <label for="email">E-Mail-Adresse</label>
-            <input type="email" id="email" name="email" required>
+            <input type="email" id="email" name="email" value="{{ form_data.email if form_data and form_data.email else '' }}" required>
         </div>
         <div class="form-group">
             <label for="password">Passwort (min. 6 Zeichen)</label>
