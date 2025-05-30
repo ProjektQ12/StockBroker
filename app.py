@@ -23,7 +23,6 @@ AVAILABLE_QUALITIES = [
 
 
 @app.route('/login', methods=['GET', 'POST'])
-@app.route('/login', methods=['GET', 'POST'])
 def login_page():
     if 'user_id' in session:
         return redirect(url_for('dashboard_page'))

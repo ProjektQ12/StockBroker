@@ -158,23 +158,16 @@ def is_format_AXA(input:str, x:str):
         return False
     return (a, b)
 
-def is_email(email: str) -> bool:
-    if is_format_AXA(input, "@"):
-        address, domain = is_format_AXA(input, "@")
+def is_email(text: str) -> bool:
+    if is_format_AXA(text, "@"):
+        address, domain = is_format_AXA(text, "@")
         if is_format_AXA(domain, "."):
             return True
     return False
 
 
 
-def verify_input(input: str, is_email:bool=False) -> bool:
-    if is_email:
-        return is_email(input)
-    return False
-
-
-if __name__ == "__main__":   #Wird nur ausgeführt, wenn dieses Skript direct selbst ausgeführt wird.
-    print(verify_input("x@x.x", is_email=True))
- #Immer Datenbank speichern
+if __name__ == "__main__":
+    pass
 
 
