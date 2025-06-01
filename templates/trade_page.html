@@ -1,24 +1,29 @@
 {% extends "base.html" %}
 
-{% block title %}Handeln: {{ company_name }} ({{ ticker }}){% endblock %}
+{% block title %}Handeln: {{ company_name if company_name and company_name != ticker else ticker }}{% endblock %}
 
 {% block content %}
-<div class="container" style="max-width: 700px;">
-    <h1>Handeln: {{ company_name }} ({{ ticker }})</h1>
-    <p style="text-align:center; margin-bottom:10px;">Aktueller Kurs: <strong>{{ current_price if current_price != 'N/A' else 'Nicht verfügbar' }}</strong></p>
+<div class="content-container" style="max-width: 700px;">
+    <h1>
+        Handeln: {{ company_name if company_name and company_name != ticker else ticker }}
+        {% if company_name and company_name != ticker %}({{ticker}}){% endif %}
+    </h1>
+    <p style="text-align:center; margin-bottom:20px; font-size:1.1em;">
+        Aktueller Kurs: <strong>{{ current_price if current_price != 'N/A' else 'Nicht verfügbar' }}</strong>
+    </p>
 
     {# Schalter für Long/Short/Options #}
     <div class="trade-mode-selector" style="text-align: center; margin-bottom: 25px;">
-        <a href="{{ url_for('trade_page', ticker_symbol=ticker, mode='long') }}" 
+        <a href="{{ url_for('trade_page', ticker_symbol=ticker, mode='long') }}"
            class="trade-mode-button {{ 'active' if current_mode == 'long' }}">Long</a>
-        <a href="{{ url_for('trade_page', ticker_symbol=ticker, mode='short') }}" 
+        <a href="{{ url_for('trade_page', ticker_symbol=ticker, mode='short') }}"
            class="trade-mode-button {{ 'active' if current_mode == 'short' }}">Short</a>
-        <a href="{{ url_for('trade_page', ticker_symbol=ticker, mode='option') }}" 
+        <a href="{{ url_for('trade_page', ticker_symbol=ticker, mode='option') }}"
            class="trade-mode-button {{ 'active' if current_mode == 'option' }}">Optionen</a>
     </div>
 
     <form method="POST" action="{{ url_for('trade_page', ticker_symbol=ticker, mode=current_mode) }}">
-        
+
         {# --- LONG Bereich --- #}
         {% if current_mode == 'long' %}
         <div class="trade-section">
@@ -45,24 +50,23 @@
                     <option value="gtc">Unbegrenzt (GTC)</option>
                 </select>
             </div>
-            {# Weitere Felder für Long... #}
-            <button type="submit" class="form-button">Kaufen (Long)</button>
+            <button type="submit" class="form-button full-width">Kaufen (Long)</button>
         </div>
         <script>
             function toggleLimitPrice(orderType) {
-                document.getElementById('limitPriceGroup').style.display = orderType === 'limit' ? 'block' : 'none';
-                const limitPriceInput = document.getElementById('limit_price');
-                if (orderType === 'limit') {
-                    limitPriceInput.required = true;
-                } else {
-                    limitPriceInput.required = false;
-                    limitPriceInput.value = ''; // Wert löschen, wenn nicht Limit
+                const limitGroup = document.getElementById('limitPriceGroup');
+                const limitInput = document.getElementById('limit_price');
+                if (limitGroup && limitInput) {
+                    limitGroup.style.display = orderType === 'limit' ? 'block' : 'none';
+                    limitInput.required = orderType === 'limit';
+                    if (orderType !== 'limit') {
+                        limitInput.value = '';
+                    }
                 }
             }
-            // Initialer Aufruf, falls Seite mit vorausgewähltem Limit geladen wird (selten hier)
             document.addEventListener('DOMContentLoaded', function() {
                 const orderTypeSelect = document.getElementById('order_type');
-                if (orderTypeSelect) { // Sicherstellen, dass das Element existiert
+                if (orderTypeSelect) {
                      toggleLimitPrice(orderTypeSelect.value);
                 }
             });
@@ -73,69 +77,51 @@
         {% if current_mode == 'short' %}
         <div class="trade-section">
             <h2>Short Position eröffnen</h2>
-            <p style="text-align:center; color:orange; font-weight:bold; margin: 30px 0;">Short-Handel ist noch nicht implementiert.</p>
-            {# Hier kämen die Formularfelder für Short-Orders hin #}
-            {# z.B. Stückzahl für Short #}
-            <!-- 
-            <div class="form-group">
-                <label for="quantity_short">Stückzahl Short</label>
-                <input type="number" id="quantity_short" name="quantity_short" min="1" value="1" class="form-control">
+            <p class="info-box" style="text-align:center; background-color:#fff3cd; color:#664d03; border-color:#ffecb5;">
+                Short-Handel ist in dieser Demo-Version noch nicht implementiert.
+            </p>
             </div>
-            <button type="submit" class="form-button" disabled>Verkaufen (Short) - N/A</button>
-            -->
-        </div>
         {% endif %}
 
         {# --- OPTIONS Bereich --- #}
         {% if current_mode == 'option' %}
         <div class="trade-section">
             <h2>Optionshandel</h2>
-            <p style="text-align:center; color:orange; font-weight:bold; margin: 30px 0;">Optionshandel ist noch nicht implementiert.</p>
-            {# Hier kämen die Formularfelder für Options-Orders hin #}
-            <!-- 
-            <div class="form-group">
-                <label for="option_type_select">Typ</label>
-                <select id="option_type_select" name="option_type_select" class="form-control">
-                    <option value="call">Call</option>
-                    <option value="put">Put</option>
-                </select>
+             <p class="info-box" style="text-align:center; background-color:#fff3cd; color:#664d03; border-color:#ffecb5;">
+                Optionshandel ist in dieser Demo-Version noch nicht implementiert.
+            </p>
             </div>
-            <div class="form-group">
-                <label for="strike_price_option">Strike-Preis</label>
-                <input type="number" step="0.1" id="strike_price_option" name="strike_price_option" class="form-control">
-            </div>
-            <div class="form-group">
-                <label for="expiration_date_option">Verfallsdatum</label>
-                <input type="date" id="expiration_date_option" name="expiration_date_option" class="form-control">
-            </div>
-            <div class="form-group">
-                <label for="quantity_option">Anzahl Kontrakte</label>
-                <input type="number" id="quantity_option" name="quantity_option" min="1" value="1" class="form-control">
-            </div>
-            <button type="submit" class="form-button" disabled>Option handeln - N/A</button>
-            -->
-        </div>
         {% endif %}
     </form>
-    <a href="{{ url_for('stock_detail_page', ticker_symbol=ticker) }}" class="footer-link" style="margin-top:30px;">« Zurück zur Detailseite von {{ticker}}</a>
+    <div style="text-align:center; margin-top:30px;">
+    <a href="{{ url_for('stock_detail_page', ticker_symbol=ticker) }}" class="footer-link">« Zurück zur Detailseite von {{ticker}}</a>
+    </div>
 </div>
 <style>
     .trade-mode-button {
-        padding: 8px 15px; margin: 0 5px;
-        background-color: #e9ecef; color: #333;
-        border-radius: 5px; text-decoration: none;
-        border: 1px solid #ced4da;
+        padding: 10px 18px; margin: 0 5px;
+        background-color: #e9ecef; color: #495057;
+        border-radius: 6px; text-decoration: none;
+        border: 1px solid #ced4da; font-size:0.95em;
+        transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+    }
+    .trade-mode-button:hover {
+        background-color: #dbe1e6;
+        border-color: #adb5bd;
     }
     .trade-mode-button.active {
         background-color: #0d6efd; color: white;
-        border-color: #0d6efd; font-weight: bold;
+        border-color: #0d6efd; font-weight: 500;
     }
     .trade-section {
-        border: 1px solid #eee; padding: 20px; border-radius: 5px; margin-top: 20px;
+        border: 1px solid #dee2e6; padding: 20px 25px; border-radius: 8px; margin-top: 20px; background-color: #fff;
     }
-    .form-control { /* Klasse für Selects, um Styling an Inputs anzupassen */
-        width: 100%; padding: 12px; border: 1px solid #ced4da; border-radius: 6px; font-size: 1em; box-sizing: border-box;
-        background-color: white; /* Wichtig für Select auf manchen Browsern */
+    .trade-section h2 {
+        text-align: left;
+        font-size: 1.4em;
+        margin-bottom: 25px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #eee;
     }
 </style>
 {% endblock %}

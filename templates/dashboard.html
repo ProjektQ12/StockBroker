@@ -3,10 +3,35 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="container" style="max-width: 800px; margin: 20px auto; text-align:center;">
+<div class="content-container">
     <h1>Willkommen, {{ display_name }}!</h1>
-    <p>Dies ist dein persönlicher Bereich.</p>
-    {# Füge hier Links zu anderen Teilen deiner App ein, z.B. Aktienanalyse #}
-    {# <p><a href="{{ url_for('yfinance_index_page') }}">Zur Aktienanalyse</a></p> #}
+    <p style="text-align:center; font-size: 1.1em; color: #333;">
+        Dies ist dein persönlicher Bereich. Nutze die Navigation oben, um Aktien zu suchen oder andere Funktionen zu nutzen.
+    </p>
+
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+        <h2>Schnellzugriff</h2>
+        <ul style="list-style: none; padding:0; text-align:center;">
+            <li style="margin-bottom:10px;">
+                <a href="{{ url_for('search_stock_page') }}" class="form-button" style="min-width: 200px;">Neue Aktiensuche starten</a>
+            </li>
+            {# Hier könnten weitere Links zu Portfolio, Watchlist etc. stehen #}
+            {% if session.user_id %}
+            <li style="margin-bottom:10px;">
+                 <p>Benutzer-ID: {{ session.user_id }}</p>
+                 <p>E-Mail: {{ session.user_email }}</p>
+                 <p>Benutzername: {{ session.username }}</p>
+            </li>
+            {% endif %}
+        </ul>
+    </div>
+
+    {# Optional: Platzhalter für Nachrichten oder andere Module, falls die "embeddable search" später relevant wird #}
+    {#
+    <div class="data-section" style="margin-top: 40px;">
+        <h2>Finanznachrichten (Beispiel)</h2>
+        <p>Hier könnten Nachrichten angezeigt werden.</p>
+    </div>
+     #}
 </div>
 {% endblock %}

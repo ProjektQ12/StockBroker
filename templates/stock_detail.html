@@ -1,222 +1,126 @@
-{# ... (extends base.html, content block, Quote-Anzeige, Chart-Fehleranzeige) ... #}
+{% extends "base.html" %}
 
-    {# --- Chart-Bereich --- #}
-    <h3>Kursverlauf</h3>
-    {% if chart_error %}
-        {# Fehleranzeige wie zuvor #}
-        <p class="error">Fehler beim Laden der Chart-Daten: {{ chart_error }}</p>
-        <script>console.error("Chart Error from backend:", {{ chart_error|tojson }});</script>
-    {% elif chart_dates_json != 'null' and chart_prices_json != 'null' %} {# Prüfung im Template bleibt sinnvoll #}
-        {# Buttons für Zeitrahmen (unverändert) #}
-        <div class="timeframe-buttons" style="margin-bottom: 15px;">
-            <button onclick="updateChartRange('1M')">1 Monat</button>
-            <button onclick="updateChartRange('6M')">6 Monate</button>
-            <button onclick="updateChartRange('1Y')">1 Jahr</button>
-            <button onclick="updateChartRange('5Y')">5 Jahre</button>
-            <button onclick="updateChartRange('Max')">Max</button>
-        </div>
+{% block title %}Details für {{ details.name if details and details.name else ticker }}{% endblock %}
 
-        {# Canvas für den Chart (unverändert) #}
-        <div style="max-width: 760px; margin: auto;">
-             <canvas id="stockChartCanvas"></canvas>
-        </div>
+{% block content %}
+<div class="content-container">
+    <h1>
+        {{ details.name if details and details.name else ticker }}
+        <span style="font-size:0.7em; color:#777;">({{ ticker }})</span>
+    </h1>
 
-        {# Chart.js einbinden (CDN) (unverändert) #}
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-        <script>
-            console.log("--- Chart Script Start ---");
-
-            // 1. Daten vom backend übernehmen (KEIN JSON.parse mehr nötig!)
-            // Jinja2 mit |safe fügt die Daten direkt als JS-Literal ein.
-            // Wenn das backend 'null' (als String) sendet, wird hier das JS-null eingefügt.
-            const allDates = {{ chart_dates_json|safe }};
-            const allPrices = {{ chart_prices_json|safe }};
-            const stockSymbol = {{ symbol|tojson }}; // tojson ist hier gut für Strings
-            const currencySymbol = {{ currency|tojson }};
-
-            // 2. Loggen und Prüfen der übernommenen Daten
-            console.log("Daten direkt übernommen (sollten Arrays oder null sein):");
-            console.log(`allDates (Typ: ${typeof allDates}, Länge: ${Array.isArray(allDates) ? allDates.length : 'N/A'}):`, Array.isArray(allDates) ? allDates.slice(0, 5) : allDates);
-            console.log(`allPrices (Typ: ${typeof allPrices}, Länge: ${Array.isArray(allPrices) ? allPrices.length : 'N/A'}):`, Array.isArray(allPrices) ? allPrices.slice(0, 5) : allPrices);
-
-            let dataValid = Array.isArray(allDates) && Array.isArray(allPrices) && allDates.length > 0 && allPrices.length === allDates.length;
-            if (!dataValid) {
-                 console.warn("Chartdaten sind ungültig oder leer nach Übernahme aus Template.");
-                 // Optional: Fehlermeldung im HTML anzeigen
-                 const errorContainer = document.createElement('p');
-                 errorContainer.textContent = 'Fehler: Chartdaten konnten nicht korrekt geladen werden.';
-                 errorContainer.className = 'error';
-                 // Füge es nach den Buttons ein, wenn das Element existiert
-                 const buttonContainer = document.querySelector('.timeframe-buttons');
-                 if (buttonContainer) {
-                    buttonContainer.insertAdjacentElement('afterend', errorContainer);
-                 }
-            }
-
-
-            let stockChart = null; // Globale Variable für das Chart-Objekt
-
-            // Funktion renderChart (unverändert lassen, sie erwartet bereits Arrays)
-            function renderChart(displayDates, displayPrices) {
-                console.log(`renderChart called with ${displayDates ? displayDates.length : 0} dates.`);
-                // Prüfen ob displayDates/displayPrices valide Arrays sind
-                 if (!Array.isArray(displayDates) || !Array.isArray(displayPrices) || displayDates.length === 0 || displayDates.length !== displayPrices.length) {
-                    console.warn("renderChart: Keine gültigen Daten zum Anzeigen.");
-                    if (stockChart) {
-                       stockChart.destroy();
-                       stockChart = null;
-                    }
-                    const ctx = document.getElementById('stockChartCanvas');
-                    if (ctx) {
-                       const context = ctx.getContext('2d');
-                       context.clearRect(0, 0, ctx.width, ctx.height);
-                       context.textAlign = "center";
-                       context.fillText("Keine Chartdaten für diesen Zeitraum.", ctx.width / 2, ctx.height / 2);
-                    }
-                    return;
-                }
-
-                const ctx = document.getElementById('stockChartCanvas');
-                if (!ctx) {
-                    console.error("Canvas context 'stockChartCanvas' konnte nicht gefunden werden!");
-                    return;
-                }
-                console.log("Canvas context gefunden.");
-
-                const chartData = { /* ... wie zuvor ... */
-                    labels: displayDates,
-                    datasets: [{
-                        label: `Schlusskurs (${stockSymbol}) ${currencySymbol}`,
-                        data: displayPrices,
-                        borderColor: 'rgb(75, 192, 192)',
-                        tension: 0.1,
-                        borderWidth: 1.5,
-                        pointRadius: 0,
-                        pointHoverRadius: 5,
-                    }]
-                };
-                const chartConfig = { /* ... wie zuvor ... */
-                     type: 'line',
-                    data: chartData,
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        scales: {
-                             x: {
-                                type: 'time',
-                                time: {
-                                    tooltipFormat: 'll',
-                                     parser: 'yyyy-MM-dd',
-                                     unit: 'month',
-                                     displayFormats: {
-                                        'day': 'DD MMM',
-                                        'week': 'll',
-                                        'month': 'MMM YY',
-                                        'year': 'YYYY'
-                                    }
-                                },
-                                title: { display: true, text: 'Datum' }
-                            },
-                            y: {
-                                beginAtZero: false,
-                                title: { display: true, text: `Preis (${currencySymbol})` }
-                            }
-                        },
-                        plugins: {
-                            tooltip: { mode: 'index', intersect: false },
-                            title: { display: false }
-                        },
-                        interaction: { mode: 'nearest', axis: 'x', intersect: false }
-                    }
-                 };
-
-                if (stockChart) {
-                    console.log("Chart existiert, wird aktualisiert.");
-                    stockChart.data.labels = displayDates;
-                    stockChart.data.datasets[0].data = displayPrices;
-                    stockChart.update();
-                    console.log("Chart aktualisiert.");
-                } else {
-                    console.log("Erstelle neuen Chart.");
-                    try {
-                         stockChart = new Chart(ctx, chartConfig);
-                         console.log("Neuer Chart erstellt:", stockChart);
-                    } catch(chartError) {
-                         console.error("Fehler beim Erstellen des Charts mit new Chart():", chartError);
-                         const errorContainer = document.createElement('p');
-                         errorContainer.textContent = 'Fehler: Chart konnte nicht initialisiert werden (siehe Konsole).';
-                         errorContainer.className = 'error';
-                          const buttonContainer = document.querySelector('.timeframe-buttons');
-                          if (buttonContainer) { buttonContainer.insertAdjacentElement('afterend', errorContainer); }
-                    }
-                }
-            }
-
-            // Funktion updateChartRange (unverändert lassen, greift jetzt auf korrekt initialisiertes allDates zu)
-             function updateChartRange(range) {
-                console.log(`updateChartRange called with: ${range}`);
-                // Prüfen ob die globalen Daten valide sind
-                if (!dataValid) { // Benutze die globale Variable dataValid
-                     console.warn("updateChartRange: Keine gültigen globalen Daten vorhanden zum Filtern.");
-                     renderChart(null, null); // Chart leeren
-                     return;
-                }
-
-                const endDate = new Date(allDates[allDates.length - 1]);
-                let startDate;
-                switch(range) {
-                    // ... Cases ...
-                    case '1M': startDate = new Date(endDate); startDate.setMonth(endDate.getMonth() - 1); break;
-                    case '6M': startDate = new Date(endDate); startDate.setMonth(endDate.getMonth() - 6); break;
-                    case '1Y': startDate = new Date(endDate); startDate.setFullYear(endDate.getFullYear() - 1); break;
-                    case '5Y': startDate = new Date(endDate); startDate.setFullYear(endDate.getFullYear() - 5); break;
-                    case 'Max': default: startDate = new Date(allDates[0]); break;
-                }
-                const startDateString = startDate.toISOString().split('T')[0];
-                console.log(`Filtering dates from ${startDateString} to ${allDates[allDates.length - 1]}`);
-
-                const filteredDates = [];
-                const filteredPrices = [];
-                for (let i = 0; i < allDates.length; i++) {
-                    if (allDates[i] >= startDateString) {
-                        filteredDates.push(allDates[i]);
-                        filteredPrices.push(allPrices[i]);
-                    }
-                }
-                console.log(`Filtering done. Result length: ${filteredDates.length}`);
-                renderChart(filteredDates, filteredPrices);
-            }
-
-
-            // Initialen Chart rendern
-            document.addEventListener('DOMContentLoaded', (event) => {
-                console.log("DOMContentLoaded event fired.");
-                 // Prüfen ob Daten valide sind *bevor* der erste Render versucht wird
-                if (dataValid) {
-                     console.log("Attempting initial chart render.");
-                     updateChartRange('1Y'); // Starte mit 1 Jahr Ansicht
-                } else {
-                    console.warn("Keine validen Chartdaten zum Initialisieren vorhanden.");
-                     // Optional: Platzhalter im Canvas, falls renderChart nicht aufgerufen wird
-                     const ctx = document.getElementById('stockChartCanvas');
-                     if (ctx && !stockChart) {
-                       const context = ctx.getContext('2d');
-                       context.clearRect(0, 0, ctx.width, ctx.height);
-                       context.textAlign = "center";
-                       context.fillText("Chartdaten konnten nicht geladen werden.", ctx.width / 2, ctx.height / 2);
-                     }
-                }
-            });
-
-            console.log("--- Chart Script End ---");
-        </script>
-
-    {% else %}
-        {# Fallback, wenn backend 'null' gemeldet hat #}
-        <p>Keine Chart-Daten verfügbar für {{ symbol }}.</p>
-        <script>console.warn("backend reported no chart data available (chart_dates_json or chart_prices_json was null).");</script>
+    {% if error %}
+        {% if "Hinweis:" in error and ("Fehler:" not in error or error.count("Hinweis:") > error.count("Fehler:")) %}
+             {# Show as info if it's primarily a note, or if note count implies it's the main message #}
+            <div class="info-box">{{ error | replace("|", "<br>") }}</div>
+        {% else %}
+            <div class="error-box">{{ error | replace("|", "<br>") }}</div>
+        {% endif %}
     {% endif %}
 
-    <p style="margin-top: 20px;"><a href="/">Zurück zur Suche</a></p>
+    {# -- Trade Button -- #}
+    {% if details and not details.error or (chart_html and not error) %} {# Button if ticker seems valid or chart loaded #}
+        <div style="text-align: center; margin: 10px 0 25px 0;">
+            <a href="{{ url_for('trade_page', ticker_symbol=ticker) }}" class="form-button"
+               style="display: inline-block; width: auto; padding: 12px 25px; font-size: 1.1em;">
+                Jetzt {{ ticker }} handeln
+            </a>
+        </div>
+    {% endif %}
+
+    {# -- Kurs-Chart Bereich -- #}
+    <div class="data-section">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; flex-wrap: wrap; gap:15px;">
+            <h2 style="margin-bottom:5px; border-bottom:none; padding-bottom:0;">Kursverlauf</h2>
+            <form id="chartOptionsForm" method="GET" action="{{ url_for('stock_detail_page', ticker_symbol=ticker) }}" style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; margin-bottom:0;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="periodSelect" class="sr-only">Zeitraum:</label>
+                    <select name="period" id="periodSelect" onchange="this.form.submit()" class="form-control" style="padding: 8px 10px; font-size:0.9em;">
+                        {% for p_val, p_disp in available_periods %}
+                            <option value="{{ p_val }}" {{ 'selected' if current_period == p_val }}>{{ p_disp }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="qualitySelect" class="sr-only">Qualität:</label>
+                    <select name="quality" id="qualitySelect" onchange="this.form.submit()" class="form-control" style="padding: 8px 10px; font-size:0.9em;">
+                        {% for q_val, q_disp in available_qualities %}
+                            <option value="{{ q_val }}" {{ 'selected' if current_quality == q_val }}>{{ q_disp }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0; display:flex; align-items:center;">
+                    <input type="checkbox" name="remove_gaps" id="removeGapsCheckbox" value="on"
+                           onchange="this.form.submit()" class="form-check-input" style="margin-right:5px; width:auto; height:auto;"
+                           {% if current_remove_gaps %}checked{% endif %}>
+                    <label for="removeGapsCheckbox" style="font-size:0.85em; font-weight:normal; margin-bottom:0;">Lücken entfernen</label>
+                </div>
+            </form>
+        </div>
+
+        {% if chart_html %}
+            <div class="chart-container">
+                {{ chart_html | safe }}
+            </div>
+        {% elif not error %} {# Only show this if there isn't a more general error displayed above #}
+            <p style="text-align:center; padding:15px; background-color:#f8f9fa; border-radius:4px;">
+                Chart konnte nicht geladen werden für {{ ticker }} (Auswahl: {{current_period}}, {{current_quality}}).
+            </p>
+        {% endif %}
+    </div>
+
+    {# -- Fundamentale Daten -- #}
+    {% if details and not details.error %}
+        <div class="data-section"><h2>Überblick &amp; Kennzahlen</h2>
+            {% if details.quote_info %}<table class="table table-sm table-striped table-hover"><tbody>
+            {% for key, value in details.quote_info.items() %}<tr><th style="width:40%;">{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}
+            </tbody></table>
+            {% elif details.quote_info_error %}<p class="error-box" style="font-size:0.9em;">{{ details.quote_info_error }}</p>
+            {% else %}<p>Keine aktuellen Kursinformationen verfügbar.</p>{% endif %}
+        </div>
+
+        {% if details.info and details.info.longBusinessSummary %}
+        <div class="data-section">
+            <h3>Unternehmensprofil</h3>
+            <p style="font-size:0.95em; line-height:1.7;">{{ details.info.longBusinessSummary }}</p>
+        </div>
+        {% endif %}
+
+        <div class="data-section">
+            <h3>Finanzdaten (Jährlich)</h3>
+            {% if details.financials_html and details.financials_html != "Keine Finanzdaten verfügbar." and "konnten nicht geladen werden" not in details.financials_html %}
+                <div class="table-responsive">{{ details.financials_html | safe }}</div>
+            {% else %}
+                <p>{{ details.financials_html if details.financials_html else "Keine Finanzdaten verfügbar." }}</p>
+            {% endif %}
+        </div>
+
+        <div class="data-section">
+            <h3>Haupteigner</h3>
+             {% if details.major_holders_html and details.major_holders_html != "Keine Daten zu Haupteignern verfügbar." and "konnten nicht geladen werden" not in details.major_holders_html %}
+                <div class="table-responsive">{{ details.major_holders_html | safe }}</div>
+            {% else %}
+                <p>{{ details.major_holders_html if details.major_holders_html else "Keine Daten zu Haupteignern verfügbar." }}</p>
+            {% endif %}
+        </div>
+
+        <div class="data-section">
+            <h3>Letzte Analystenempfehlungen</h3>
+            {% if details.recommendations_html and details.recommendations_html != "Keine Empfehlungen verfügbar." and "konnten nicht geladen werden" not in details.recommendations_html %}
+                <div class="table-responsive">{{ details.recommendations_html | safe }}</div>
+            {% else %}
+                <p>{{ details.recommendations_html if details.recommendations_html else "Keine Empfehlungen verfügbar." }}</p>
+            {% endif %}
+        </div>
+
+    {% elif details and details.error and not chart_html and not error %} {# If details specific error, and no chart and no general error #}
+        <div class="error-box">Fehler beim Laden der Detaildaten: {{ details.error }}</div>
+    {% elif not details and not chart_html and not error %}
+         <p style="text-align:center; padding:20px;">Keine Detaildaten für {{ ticker }} verfügbar.</p>
+    {% endif %}
+
+    <div style="text-align:center; margin-top:30px;">
+        <a href="{{ url_for('search_stock_page') }}" class="footer-link">« Zurück zur Aktiensuche</a>
+    </div>
+</div>
 {% endblock %}

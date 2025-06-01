@@ -1,20 +1,52 @@
 {% extends "base.html" %}
 
-{% block title %}Ticker Suche{% endblock %}
+{% block title %}Aktiensuche{% endblock %}
 
 {% block content %}
-    <h1>Aktien-Ticker eingeben</h1>
+<div class="content-container">
+    <h1>Aktiensuche</h1>
     <p style="text-align:center; color:#555; margin-top:-20px; margin-bottom:25px;">
-        Gib ein gültiges Tickersymbol ein (z.B. MSFT, TSLA, BTC-USD, ^GDAXI), um Details und den Chart anzuzeigen.
+        Gib einen Firmennamen oder ein Tickersymbol ein, um nach Aktien zu suchen (via Alpha Vantage).
     </p>
 
-    <form method="POST" action="{{ url_for('search_stock_page') }}">
-        <label for="ticker_query" class="sr-only">Aktien-Ticker:</label>
-        <input type="text" id="ticker_query" name="ticker_query" value="{{ query if query else '' }}" required placeholder="Ticker-Symbol...">
-        <button type="submit">Details anzeigen</button>
+    <form method="GET" action="{{ url_for('search_stock_page') }}" class="search-form-container" style="margin-bottom: 30px;">
+        <div class="form-group" style="display: flex; gap: 10px;">
+            <input type="text" id="keywords" name="keywords" value="{{ query if query else '' }}" required placeholder="z.B. Tesla, Apple, MSFT..." class="form-control" style="flex-grow:1;">
+            <button type="submit" class="form-button">Suchen</button>
+        </div>
     </form>
 
-    {% if error %}
+    {% if error and not results %} {# Display general API error if no results are shown #}
         <div class="error-box">{{ error }}</div>
     {% endif %}
+
+    {% if results is not none %} {# Check if results is not None, could be an empty list for no matches #}
+        {% if results %}
+            <h2>Suchergebnisse für "{{ query }}"</h2>
+            <ul class="results-list" style="list-style: none; padding: 0;">
+                {% for result in results %}
+                    <li style="background-color: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 15px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h3 style="margin-top:0; margin-bottom:5px; font-size: 1.2em;">
+                                    <a href="{{ url_for('stock_detail_page', ticker_symbol=result['1. symbol']) }}" style="text-decoration:none; color:#0d6efd;">
+                                        {{ result['2. name'] }} ({{ result['1. symbol'] }})
+                                    </a>
+                                </h3>
+                                <p style="font-size: 0.9em; color: #555; margin-bottom: 3px;">
+                                    Region: {{ result['4. region'] }} | Typ: {{ result['3. type'] }} | Währung: {{ result['8. currency'] }}
+                                </p>
+                            </div>
+                            <a href="{{ url_for('stock_detail_page', ticker_symbol=result['1. symbol']) }}" class="form-button" style="padding: 8px 15px; font-size: 0.9em;">
+                                Details anzeigen
+                            </a>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% elif query %} {# Query was made, but no results from API #}
+             <p style="text-align:center;">Keine Ergebnisse für "{{ query }}" gefunden.</p>
+        {% endif %}
+    {% endif %}
+</div>
 {% endblock %}
