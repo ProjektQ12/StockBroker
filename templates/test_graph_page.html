@@ -1,46 +1,54 @@
 {% extends "base.html" %}
 
-{% block title %}Test Chart: {{ company_name if company_name else ticker }}{% endblock %}
+{% block title %}Test Chart: {{ company_name if company_name and company_name != ticker else ticker }}{% endblock %}
 
 {% block content %}
+<div class="content-container">
     <h1>
-        Test Chart für {{ company_name if company_name else ticker }}
+        Test Chart für {{ company_name if company_name and company_name != ticker else ticker }}
+        {% if company_name and company_name != ticker %}({{ticker}}){% endif %}
     </h1>
-     <form id="chartOptionsFormTest" method="GET" action="{{ url_for('test_graph_page') }}" style="margin-bottom:20px; display:flex; gap:10px; align-items:center; background-color:transparent; padding:0; flex-wrap:wrap;">
-        <input type="hidden" name="ticker_symbol" value="{{ticker}}">
-        <div>
-            <label for="periodSelectTest" style="font-size:0.85em; margin-right:5px;">Zeitraum:</label>
-            <select name="period" id="periodSelectTest" onchange="this.form.submit()" style="padding:6px 8px; font-size:0.9em; border-radius:4px;">
+
+     <form id="chartOptionsFormTest" method="GET" action="{{ url_for('test_graph_page') }}" style="margin-bottom:20px; display:flex; flex-wrap:wrap; gap:15px; align-items:center; justify-content:center; padding:15px; background-color:#f8f9fa; border-radius:6px;">
+        <div class="form-group" style="margin-bottom:0;">
+            <label for="tickerTest" style="font-weight:normal; margin-right:5px;">Ticker:</label>
+            <input type="text" name="ticker" id="tickerTest" value="{{ticker}}" class="form-control" style="padding: 8px 10px; font-size:0.9em; width:auto; min-width:100px;">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+            <label for="periodSelectTest" style="font-weight:normal; margin-right:5px;">Zeitraum:</label>
+            <select name="period" id="periodSelectTest" onchange="this.form.submit()" class="form-control" style="padding: 8px 10px; font-size:0.9em; width:auto;">
                 {% for p_val, p_disp in available_periods %}
                     <option value="{{ p_val }}" {{ 'selected' if current_period == p_val }}>{{ p_disp }}</option>
                 {% endfor %}
             </select>
         </div>
-        <div>
-            <label for="qualitySelectTest" style="font-size:0.85em; margin-right:5px;">Qualität:</label>
-            <select name="quality" id="qualitySelectTest" onchange="this.form.submit()" style="padding:6px 8px; font-size:0.9em; border-radius:4px;">
+        <div class="form-group" style="margin-bottom:0;">
+            <label for="qualitySelectTest" style="font-weight:normal; margin-right:5px;">Qualität:</label>
+            <select name="quality" id="qualitySelectTest" onchange="this.form.submit()" class="form-control" style="padding: 8px 10px; font-size:0.9em; width:auto;">
                 {% for q_val, q_disp in available_qualities %}
                     <option value="{{ q_val }}" {{ 'selected' if current_quality == q_val }}>{{ q_disp }}</option>
                 {% endfor %}
             </select>
         </div>
-        <div style="margin-left: 5px;">
+        <div class="form-group" style="margin-bottom:0; display:flex; align-items:center;">
             <input type="checkbox" name="remove_gaps" id="removeGapsCheckboxTest" value="on"
-                   onchange="this.form.submit()"
-                   {% if current_remove_gaps %}checked{% endif %}>
-            <label for="removeGapsCheckboxTest" style="font-size:0.85em;">Keine Lücken</label>
+                   onchange="this.form.submit()" class="form-check-input" style="margin-right:5px; width:auto; height:auto;">
+            <label for="removeGapsCheckboxTest" style="font-size:0.9em; font-weight:normal; margin-bottom:0;">Lücken entfernen</label>
         </div>
+         <button type="submit" class="form-button" style="padding: 8px 15px; font-size:0.9em;">Aktualisieren</button>
     </form>
-    <p style="text-align:center; font-size:0.9em; color:#555;">
-        Ausgewählt: {{ current_period }}, {{ current_quality }}, Lücken entfernen: {{ "Ja" if current_remove_gaps else "Nein" }}. <br>
+    <p style="text-align:center; font-size:0.9em; color:#555; margin-bottom:20px;">
+        Ausgewählt: {{ current_period }} ({{ available_periods | selectattr(0, 'equalto', current_period) | map(attribute=1) | first }}),
+        {{ current_quality }} ({{ available_qualities | selectattr(0, 'equalto', current_quality) | map(attribute=1) | first }}),
+        Lücken: {{ "Ja" if current_remove_gaps else "Nein" }}. <br>
         Verwendet für Chart: Periode '{{ actual_period_used }}', Intervall '{{ actual_interval_used }}'.
     </p>
 
     {% if error %}
-         {% if "Hinweis:" in error %}
-            <div class="info-box">{{ error }}</div>
+         {% if "Hinweis:" in error and "Fehler:" not in error %}
+            <div class="info-box">{{ error | replace("|", "<br>") }}</div>
         {% else %}
-            <div class="error-box">{{ error }}</div>
+            <div class="error-box">{{ error | replace("|", "<br>") }}</div>
         {% endif %}
     {% endif %}
 
@@ -49,8 +57,11 @@
             {{ chart_html | safe }}
         </div>
     {% elif not error %}
-        <p>Chart konnte nicht geladen werden.</p>
+        <p style="text-align:center; padding:15px; background-color:#f8f9fa; border-radius:4px;">Chart konnte nicht geladen werden.</p>
     {% endif %}
-    
-    <a href="{{ url_for('search_stock_page') }}" class="footer-link" style="margin-top:20px;">« Zurück zur Ticker-Suche</a>
+
+    <div style="text-align:center; margin-top:30px;">
+        <a href="{{ url_for('search_stock_page') }}" class="footer-link">« Zurück zur Aktiensuche</a>
+    </div>
+</div>
 {% endblock %}

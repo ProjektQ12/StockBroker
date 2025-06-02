@@ -3,54 +3,57 @@
 {% block title %}Details für {{ details.name if details and details.name else ticker }}{% endblock %}
 
 {% block content %}
+<div class="content-container">
     <h1>
-        {{ details.name if details and details.name else ticker }} 
+        {{ details.name if details and details.name else ticker }}
         <span style="font-size:0.7em; color:#777;">({{ ticker }})</span>
     </h1>
 
     {% if error %}
-        {% if "Hinweis:" in error %}
-            <div class="info-box">{{ error }}</div>
+        {% if "Hinweis:" in error and ("Fehler:" not in error or error.count("Hinweis:") > error.count("Fehler:")) %}
+             {# Show as info if it's primarily a note, or if note count implies it's the main message #}
+            <div class="info-box">{{ error | replace("|", "<br>") }}</div>
         {% else %}
-            <div class="error-box">{{ error }}</div>
+            <div class="error-box">{{ error | replace("|", "<br>") }}</div>
         {% endif %}
     {% endif %}
 
-    {# -- Kurs-Chart Bereich -- #}
-    {% if not details or not details.error or chart_html %}
-    {% if not details or not details.error %} {# Button nur anzeigen, wenn Ticker valide erscheint #}
-        <div style="text-align: center; margin: 20px 0;">
+    {# -- Trade Button -- #}
+    {% if details and not details.error or (chart_html and not error) %} {# Button if ticker seems valid or chart loaded #}
+        <div style="text-align: center; margin: 10px 0 25px 0;">
             <a href="{{ url_for('trade_page', ticker_symbol=ticker) }}" class="form-button"
                style="display: inline-block; width: auto; padding: 12px 25px; font-size: 1.1em;">
                 Jetzt {{ ticker }} handeln
             </a>
         </div>
     {% endif %}
+
+    {# -- Kurs-Chart Bereich -- #}
     <div class="data-section">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap;">
-            <h2>Kursverlauf</h2>
-            <form id="chartOptionsForm" method="GET" action="{{ url_for('stock_detail_page', ticker_symbol=ticker) }}" style="margin-bottom:0; display:flex; gap:10px; align-items:center; background-color:transparent; padding:0; flex-wrap: wrap;">
-                <div>
-                    <label for="periodSelect" style="font-size:0.85em; margin-right:5px;">Zeitraum:</label>
-                    <select name="period" id="periodSelect" onchange="this.form.submit()" style="padding:6px 8px; font-size:0.9em; border-radius:4px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; flex-wrap: wrap; gap:15px;">
+            <h2 style="margin-bottom:5px; border-bottom:none; padding-bottom:0;">Kursverlauf</h2>
+            <form id="chartOptionsForm" method="GET" action="{{ url_for('stock_detail_page', ticker_symbol=ticker) }}" style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; margin-bottom:0;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="periodSelect" class="sr-only">Zeitraum:</label>
+                    <select name="period" id="periodSelect" onchange="this.form.submit()" class="form-control" style="padding: 8px 10px; font-size:0.9em;">
                         {% for p_val, p_disp in available_periods %}
                             <option value="{{ p_val }}" {{ 'selected' if current_period == p_val }}>{{ p_disp }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <div>
-                    <label for="qualitySelect" style="font-size:0.85em; margin-right:5px;">Qualität:</label>
-                    <select name="quality" id="qualitySelect" onchange="this.form.submit()" style="padding:6px 8px; font-size:0.9em; border-radius:4px;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="qualitySelect" class="sr-only">Qualität:</label>
+                    <select name="quality" id="qualitySelect" onchange="this.form.submit()" class="form-control" style="padding: 8px 10px; font-size:0.9em;">
                         {% for q_val, q_disp in available_qualities %}
                             <option value="{{ q_val }}" {{ 'selected' if current_quality == q_val }}>{{ q_disp }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <div style="margin-left: 5px;"> {# Etwas Abstand für die Checkbox #}
+                <div class="form-group" style="margin-bottom:0; display:flex; align-items:center;">
                     <input type="checkbox" name="remove_gaps" id="removeGapsCheckbox" value="on"
-                           onchange="this.form.submit()"
+                           onchange="this.form.submit()" class="form-check-input" style="margin-right:5px; width:auto; height:auto;"
                            {% if current_remove_gaps %}checked{% endif %}>
-                    <label for="removeGapsCheckbox" style="font-size:0.85em;">Keine Lücken (Wochenenden)</label>
+                    <label for="removeGapsCheckbox" style="font-size:0.85em; font-weight:normal; margin-bottom:0;">Lücken entfernen</label>
                 </div>
             </form>
         </div>
@@ -59,27 +62,65 @@
             <div class="chart-container">
                 {{ chart_html | safe }}
             </div>
-        {% elif not error %}
-            <p>Chart konnte nicht geladen werden für {{ ticker }} (Auswahl: {{current_period}}, {{current_quality}}).</p>
+        {% elif not error %} {# Only show this if there isn't a more general error displayed above #}
+            <p style="text-align:center; padding:15px; background-color:#f8f9fa; border-radius:4px;">
+                Chart konnte nicht geladen werden für {{ ticker }} (Auswahl: {{current_period}}, {{current_quality}}).
+            </p>
         {% endif %}
     </div>
-    {% endif %}
 
-    {# -- Fundamentale Daten (Rest bleibt gleich) -- #}
+    {# -- Fundamentale Daten -- #}
     {% if details and not details.error %}
-        <div class="data-section"><h2>Überblick</h2>
-            {% if details.quote_info %}<table class="table table-sm"><tbody>
-            {% for key, value in details.quote_info.items() %}<tr><th>{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}
+        <div class="data-section"><h2>Überblick &amp; Kennzahlen</h2>
+            {% if details.quote_info %}<table class="table table-sm table-striped table-hover"><tbody>
+            {% for key, value in details.quote_info.items() %}<tr><th style="width:40%;">{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}
             </tbody></table>
             {% elif details.quote_info_error %}<p class="error-box" style="font-size:0.9em;">{{ details.quote_info_error }}</p>
             {% else %}<p>Keine aktuellen Kursinformationen verfügbar.</p>{% endif %}
         </div>
-        {% if details.info and details.info.longBusinessSummary %}<div class="data-section"><h3>Unternehmensprofil</h3><p style="font-size:0.95em; line-height:1.7;">{{ details.info.longBusinessSummary }}</p></div>{% endif %}
-        <div class="data-section"><h3>Finanzdaten (Jährlich)</h3>{% if details.financials_html %}{{ details.financials_html | safe }}{% else %}<p>Keine Finanzdaten verfügbar.</p>{% endif %}</div>
-        <div class="data-section"><h3>Haupteigner</h3>{% if details.major_holders_html %}{{ details.major_holders_html | safe }}{% else %}<p>Keine Daten zu Haupteignern verfügbar.</p>{% endif %}</div>
-        <div class="data-section"><h3>Letzte Analystenempfehlungen</h3>{% if details.recommendations_html %}{{ details.recommendations_html | safe }}{% else %}<p>Keine Empfehlungen verfügbar.</p>{% endif %}</div>
-    {% elif details and details.error and not error and not chart_html %}
+
+        {% if details.info and details.info.longBusinessSummary %}
+        <div class="data-section">
+            <h3>Unternehmensprofil</h3>
+            <p style="font-size:0.95em; line-height:1.7;">{{ details.info.longBusinessSummary }}</p>
+        </div>
+        {% endif %}
+
+        <div class="data-section">
+            <h3>Finanzdaten (Jährlich)</h3>
+            {% if details.financials_html and details.financials_html != "Keine Finanzdaten verfügbar." and "konnten nicht geladen werden" not in details.financials_html %}
+                <div class="table-responsive">{{ details.financials_html | safe }}</div>
+            {% else %}
+                <p>{{ details.financials_html if details.financials_html else "Keine Finanzdaten verfügbar." }}</p>
+            {% endif %}
+        </div>
+
+        <div class="data-section">
+            <h3>Haupteigner</h3>
+             {% if details.major_holders_html and details.major_holders_html != "Keine Daten zu Haupteignern verfügbar." and "konnten nicht geladen werden" not in details.major_holders_html %}
+                <div class="table-responsive">{{ details.major_holders_html | safe }}</div>
+            {% else %}
+                <p>{{ details.major_holders_html if details.major_holders_html else "Keine Daten zu Haupteignern verfügbar." }}</p>
+            {% endif %}
+        </div>
+
+        <div class="data-section">
+            <h3>Letzte Analystenempfehlungen</h3>
+            {% if details.recommendations_html and details.recommendations_html != "Keine Empfehlungen verfügbar." and "konnten nicht geladen werden" not in details.recommendations_html %}
+                <div class="table-responsive">{{ details.recommendations_html | safe }}</div>
+            {% else %}
+                <p>{{ details.recommendations_html if details.recommendations_html else "Keine Empfehlungen verfügbar." }}</p>
+            {% endif %}
+        </div>
+
+    {% elif details and details.error and not chart_html and not error %} {# If details specific error, and no chart and no general error #}
         <div class="error-box">Fehler beim Laden der Detaildaten: {{ details.error }}</div>
+    {% elif not details and not chart_html and not error %}
+         <p style="text-align:center; padding:20px;">Keine Detaildaten für {{ ticker }} verfügbar.</p>
     {% endif %}
-    <a href="{{ url_for('search_stock_page') }}" class="footer-link">« Zurück zur Ticker-Suche</a>
+
+    <div style="text-align:center; margin-top:30px;">
+        <a href="{{ url_for('search_stock_page') }}" class="footer-link">« Zurück zur Aktiensuche</a>
+    </div>
+</div>
 {% endblock %}

@@ -3,57 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Meine App{% endblock %}</title>
+    <title>{% block title %}StockBroker App{% endblock %}</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f0f2f5; color: #1c1e21; line-height: 1.6; }
-        .navbar { background-color: #fff; padding: 12px 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f0f2f5; color: #1c1e21; line-height: 1.6; display: flex; flex-direction: column; min-height: 100vh; }
+        .navbar { background-color: #fff; padding: 12px 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; }
         .navbar .logo a { font-size: 1.5em; color: #0d6efd; text-decoration: none; font-weight: bold; }
+        .navbar nav { display: flex; align-items: center; }
         .navbar nav a { margin-left: 20px; color: #333; text-decoration: none; font-size: 1em; }
-        .navbar nav a:hover { color: #0d6efd; text-decoration: underline; }
-        .auth-container { max-width: 400px; margin: 50px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-        h1, h2 { color: #212529; text-align: center; margin-top: 0; margin-bottom: 25px; }
-        h1 { font-size: 1.8em;}
+        .navbar nav a:hover, .navbar nav a.active { color: #0d6efd; text-decoration: underline; }
+
+        main { flex-grow: 1; width: 100%; padding: 20px 0; } /* Allow main to grow and provide vertical padding */
+
+        .auth-container { max-width: 420px; margin: 30px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .content-container { max-width: 960px; margin: 20px auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+
+        h1, h2, h3 { color: #212529; margin-top: 0; margin-bottom: 20px; }
+        h1 { font-size: 1.8em; text-align: center; margin-bottom: 25px;}
+        h2 { font-size: 1.5em; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px;}
+        h3 { font-size: 1.25em; margin-bottom: 15px; }
+
         .form-group { margin-bottom: 20px; }
-        .form-group label { display: block; margin-bottom: 8px; font-weight: 500; color: #495057; }
-        .form-group input[type="email"], .form-group input[type="password"], .form-group input[type="text"] {
-            width: 100%; padding: 12px; border: 1px solid #ced4da; border-radius: 6px; font-size: 1em; box-sizing: border-box;
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 500; color: #495057; font-size: 0.95em; }
+        .form-group input[type="email"], .form-group input[type="password"], .form-group input[type="text"], .form-group input[type="number"], .form-group select, .form-control {
+            width: 100%; padding: 10px 12px; border: 1px solid #ced4da; border-radius: 6px; font-size: 1em; box-sizing: border-box;
+            background-color: #fff; /* Ensure select background is white */
         }
-        .form-group input[type="email"]:focus, .form-group input[type="password"]:focus, .form-group input[type="text"]:focus {
+        .form-group input[type="email"]:focus, .form-group input[type="password"]:focus, .form-group input[type="text"]:focus, .form-group input[type="number"]:focus, .form-group select:focus, .form-control:focus {
             border-color: #86b7fe; outline: 0; box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
         }
-        .form-button {
-            width: 100%; padding: 12px; background-color: #0d6efd; color: white; border: none;
-            border-radius: 6px; cursor: pointer; font-size: 1.1em; font-weight: 500; transition: background-color 0.2s;
+        .form-button, button[type="submit"] { /* General button styling */
+            display: inline-block; width: auto; padding: 10px 20px; background-color: #0d6efd; color: white; border: none;
+            border-radius: 6px; cursor: pointer; font-size: 1em; font-weight: 500; transition: background-color 0.2s; text-decoration: none; text-align: center;
         }
-        .form-button:hover { background-color: #0b5ed7; }
+        .form-button.full-width { width: 100%; font-size: 1.1em; padding: 12px; }
+        .form-button:hover, button[type="submit"]:hover { background-color: #0b5ed7; }
+
         .links { margin-top: 25px; text-align: center; font-size: 0.9em; }
         .links a { color: #0d6efd; text-decoration: none; margin: 0 8px; }
         .links a:hover { text-decoration: underline; }
-        .flash-messages { list-style: none; padding: 0; margin: 0 0 20px 0; }
+
+        .flash-messages { list-style: none; padding: 0; margin: 0 auto 20px auto; border-radius: 8px; max-width: 600px; }
         .flash-messages li { padding: 12px 18px; margin-bottom: 10px; border-radius: 6px; border: 1px solid transparent; }
         .flash-success { color: #0f5132; background-color: #d1e7dd; border-color: #badbcc; }
         .flash-error { color: #842029; background-color: #f8d7da; border-color: #f5c2c7; }
         .flash-info { color: #055160; background-color: #cff4fc; border-color: #b6effb; }
         .flash-warning { color: #664d03; background-color: #fff3cd; border-color: #ffecb5; }
+
+        .table { width: 100%; margin-bottom: 1rem; color: #212529; border-collapse: collapse; }
+        .table th, .table td { padding: 0.65rem; vertical-align: top; border-top: 1px solid #dee2e6; }
+        .table thead th { vertical-align: bottom; border-bottom: 2px solid #dee2e6; }
+        .table tbody + tbody { border-top: 2px solid #dee2e6; }
+        .table-sm th, .table-sm td { padding: 0.3rem; }
+        .table-striped tbody tr:nth-of-type(odd) { background-color: rgba(0, 0, 0, 0.03); }
+        .table-hover tbody tr:hover { color: #212529; background-color: rgba(0, 0, 0, 0.06); }
+
+        .data-section { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #f0f0f0; }
+        .data-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0;}
+        .chart-container { margin-top: 10px; margin-bottom: 20px; }
+
+        .error-box { background-color: #f8d7da; color: #842029; border: 1px solid #f5c2c7; padding: 15px; border-radius: 6px; margin-bottom:20px; text-align:center; }
+        .info-box { background-color: #cff4fc; color: #055160; border: 1px solid #b6effb; padding: 15px; border-radius: 6px; margin-bottom:20px; text-align:left; font-size:0.9em; }
+
+        .footer-link { display: inline-block; margin-top: 20px; color: #0d6efd; text-decoration: none; font-size: 0.95em;}
+        .footer-link:hover { text-decoration: underline; }
+
+        /* For screen readers only */
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
     </style>
 </head>
 <body>
     <header class="navbar">
-        <div class="logo"><a href="{{ url_for('landing_page') }}">Meine App</a></div>
+        <div class="logo"><a href="{{ url_for('landing_page') }}">StockBroker</a></div>
         <nav>
+            <a href="{{ url_for('search_stock_page') }}" class="{{ 'active' if request.endpoint == 'search_stock_page' else '' }}">Suche</a>
             {% if session.user_id %}
-                <a href="{{ url_for('index_page') }}">Dashboard</a> {# Ersetze index_page #}
-                <a href="{{ url_for('logout') }}">Logout</a>
+                <a href="{{ url_for('dashboard_page') }}" class="{{ 'active' if request.endpoint == 'dashboard_page' else '' }}">Dashboard</a>
+                <a href="{{ url_for('logout') }}">Logout ({{ session.username }})</a>
             {% else %}
-                <a href="{{ url_for('login_page') }}">Login</a>
-                <a href="{{ url_for('register_page') }}">Registrieren</a>
+                <a href="{{ url_for('login_page') }}" class="{{ 'active' if request.endpoint == 'login_page' else '' }}">Login</a>
+                <a href="{{ url_for('register_page') }}" class="{{ 'active' if request.endpoint == 'register_page' else '' }}">Registrieren</a>
             {% endif %}
         </nav>
     </header>
     <main>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
-                <ul class="flash-messages auth-container" style="margin-bottom:20px; max-width:400px;">
+                <ul class="flash-messages">
                 {% for category, message in messages %}
                     <li class="flash-{{ category }}">{{ message }}</li>
                 {% endfor %}
