@@ -93,11 +93,42 @@ class ENDPOINT:
 
     @staticmethod
     def get_all_users() -> list[dict]:
+        connect()
         sql_command = "SELECT username, password_hash, email, geld FROM all_users"
         keys = ["username", "password_hash", "email", "geld"]
         cursor.execute(sql_command)
         out = [{k: v for k, v in zip(keys, values)} for values in cursor.fetchall()]
+        disconnect()
         return out
+
+    @staticmethod
+    def get_money(username) -> float:
+        connect()
+        sql_command = f"SELECT geld FROM all_users WHERE username = '{username}'"
+        out = cursor.execute(sql_command).fetchone()[0]
+        disconnect()
+        return out
+
+    @staticmethod
+    def add_money(username, money) -> bool:
+        ENDPOINT.remove_money(username, money, add=True)
+
+    @staticmethod
+    def remove_money(username, money, add=False) -> bool:
+        current_money = ENDPOINT.get_money(username)
+        if money < 0:
+            return False
+        if not add and money > current_money:
+            return False
+        if add:
+            money = money * -1
+        connect()
+        sql_command = (f"UPDATE all_users SET geld = '{current_money - money}' "
+                       f"WHERE username = '{username}'")
+        cursor.execute(sql_command)
+        disconnect()
+        return True
+
 
 def connect():
     global connection, cursor
@@ -113,7 +144,7 @@ def disconnect():
 
 def insert_account(username, password, email) -> bool: #Habe ich umbenannt, damit klar ist, was passiert
     cursor.execute(
-        f"INSERT INTO all_users VALUES ('{username}','{my_hash(password)}', '{email}')")
+        f"INSERT INTO all_users VALUES ('{username}','{my_hash(password)}', '{email}', 50000.0)")
     cursor.execute(f"SELECT username FROM all_users WHERE username = '{username}'")
     return is_valid_logindata(username, password)
 
