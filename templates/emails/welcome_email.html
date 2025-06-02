@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Willkommen bei Unserem Service!</title>
+</head>
+<body>
+    <h1>Hallo {{ user_name }},</h1>
+    <p>Willkommen bei unserem Service! Wir freuen uns, dich an Bord zu haben.</p>
+    <p>Bitte klicke auf den folgenden Link, um dein Konto zu aktivieren (oder kopiere ihn in deinen Browser):</p>
+    <p><a href="{{ activation_link }}">Konto aktivieren</a></p>
+    <p>Dein Aktivierungs-Token (falls der Link nicht funktioniert): {{ token }}</p>
+    <br>
+    <p>Viele Grüße,</p>
+    <p>Dein Team</p>
+</body>
+</html>
