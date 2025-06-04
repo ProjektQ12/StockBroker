@@ -5,7 +5,7 @@ import yfinance as yf
 import plotly.graph_objects as go
 import os
 import pandas as pd
-from backend.account_management import ENDPOINT as acc
+from backend.accounts_to_database import ENDPOINT as acc
 import trading
 import json # Added
 import requests # Added

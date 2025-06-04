@@ -1,4 +1,4 @@
-from backend.account_management import ENDPOINT as acc
+from backend.accounts_to_database import ENDPOINT as acc
 from backend import stocks_to_database
 backend_protokol = {  #Das wird verwendet, um dem Frontend (Laurens) zu kommunizieren, was passiert ist.
     "success":False,

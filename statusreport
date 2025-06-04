@@ -1,0 +1,23 @@
+Bgs to fix:
+3 Monate Intervalll ist nicht auf High verfügbar.
+Wenn man auf jetzt handeln geht, soll man nach dem anmelden auf die tradingseite redirectet werden.
+wenn man sich angemeldet hT, WIRD ALS NAME NONE angezeigt.
+Es muss ein hinweis zur erstellung das usernames, dass dieser name public ist und andere nur den sehen werden.
+
+account_management ist jetzt -> accounts_to_databse
+
+bitte StockBroker.db einmal löschen, und dann das Projekt neu herunterladen, um sicherzustellen, dass es aktualisiert wird.
+
+To dos:
+@Fabius
+Leaderbord Datenbank erstellen
+Wenn ein User das leaderboard aufruft, und eine Ruhezeit seit der letzten generierung vergangen ist,
+wird es neu generiert, über die stock_depot datenbank + das geld aus account_management
+dafür braucehn wir noch die entsprechenden python-to-sql funktionen von dir
+
+das hinzufügen:
+    in all_users soll der hash vom aktuellsten reset passwort und verify email code gespeichert werden können. Default: "".
+    Die codes müssen auch noch irgendwie ablaufen, das muss ich aber machen.
+    in all_Users soll auch das datum der letzten anmeldung sein. Wenn es "" ist, soll das bedeuten, der User hat sich noch nie angemeldet.
+
+
