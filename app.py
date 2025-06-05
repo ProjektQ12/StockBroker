@@ -9,6 +9,10 @@ from backend.accounts_to_database import ENDPOINT as acc
 import trading
 import json # Added
 import requests # Added
+from backend import stocks_to_database
+
+stocks_to_database.ENDPOINT.insert_stock("Gabriel112811", "123456", 3, 12000, "now", "Tesla AG")
+exit()
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)

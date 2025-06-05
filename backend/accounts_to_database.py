@@ -1,5 +1,7 @@
 import sqlite3
 import hashlib
+import datetime
+
 backend_protokol = {  #Das wird verwendet, um dem Frontend (Laurens) zu kommunizieren, was passiert ist.
     "success":False,
     "user_id": None,
@@ -39,6 +41,7 @@ class ENDPOINT:
 
     @staticmethod
     def verify_reset_token(token) -> dict:
+
         output = backend_protokol
         return output
 
@@ -54,11 +57,11 @@ class ENDPOINT:
         connect()
         output = backend_protokol
         if is_email(username_email):
-            if not is_email_there(username_email):
+            if not is_email_in_db(username_email):
                 output["message"] = "E-mail wurde nicht gefunden. R U 4 real?"
                 return output
         else:
-            if not is_username_there(username_email):
+            if not is_username_in_db(username_email):
                 output["message"] = "Username wurde nicht gefunden. R U 4 real?"
                 return output
 
@@ -72,7 +75,7 @@ class ENDPOINT:
 
 
     @staticmethod
-    def create_account(password, email, username="temp3"):
+    def create_account(password, email, username):
         output = backend_protokol
         print(password, username, email)
         if password is None or email is None or username is None:
@@ -80,8 +83,10 @@ class ENDPOINT:
             return output
 
         connect()
-        if is_username_there(username):
+        if is_username_in_db(username):
             output["message"] = "Username schon vergeben! Werde jetzt einzigartig!"
+        if is_email_in_db(email):
+            output["message"] = "E-Mail schon vergeben! Werde jetzt einzigartig!"
         else:
             if insert_account(username, password, email):
                 output["success"] = True
@@ -148,7 +153,7 @@ def insert_account(username, password, email) -> bool: #Habe ich umbenannt, dami
     cursor.execute(f"SELECT username FROM all_users WHERE username = '{username}'")
     return is_valid_logindata(username, password)
 
-def is_username_there(username) -> bool:
+def is_username_in_db(username) -> bool:
     cursor.execute(f"SELECT username FROM all_users WHERE username='{username}'")
     sql_output = cursor.fetchone()
     #print(f"searched username {username}, found: {sql_output}")
@@ -157,7 +162,7 @@ def is_username_there(username) -> bool:
     else:
         return False
 
-def is_email_there(email) -> bool:
+def is_email_in_db(email) -> bool:
     cursor.execute(f"SELECT email FROM all_users WHERE email='{email}'")
     sql_output = cursor.fetchone()
     #print(f"searched username {username}, found: {sql_output}")
@@ -199,6 +204,6 @@ def is_email(text: str) -> bool:
 
 
 if __name__ == "__main__":
-    pass
+    ENDPOINT.get_all_users()
 
 

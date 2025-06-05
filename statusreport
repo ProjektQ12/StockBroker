@@ -1,10 +1,10 @@
 Bgs to fix:
-3 Monate Intervalll ist nicht auf High verfügbar.
-Wenn man auf jetzt handeln geht, soll man nach dem anmelden auf die tradingseite redirectet werden.
+3 Monate Interval ist nicht auf High verfügbar.
+Wenn man auf jetzt handeln geht, soll man nach dem anmelden auf die trading-seite redirected werden.
 wenn man sich angemeldet hT, WIRD ALS NAME NONE angezeigt.
 Es muss ein hinweis zur erstellung das usernames, dass dieser name public ist und andere nur den sehen werden.
 
-account_management ist jetzt -> accounts_to_databse
+account_management ist jetzt -> accounts_to_database
 
 bitte StockBroker.db einmal löschen, und dann das Projekt neu herunterladen, um sicherzustellen, dass es aktualisiert wird.
 
@@ -13,7 +13,7 @@ To dos:
 Leaderbord Datenbank erstellen
 Wenn ein User das leaderboard aufruft, und eine Ruhezeit seit der letzten generierung vergangen ist,
 wird es neu generiert, über die stock_depot datenbank + das geld aus account_management
-dafür braucehn wir noch die entsprechenden python-to-sql funktionen von dir
+dafür brauchen wir noch die entsprechenden python-to-sql funktionen von dir
 
 das hinzufügen:
     in all_users soll der hash vom aktuellsten reset passwort und verify email code gespeichert werden können. Default: "".
