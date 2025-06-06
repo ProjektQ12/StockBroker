@@ -10,8 +10,10 @@ import trading
 import json # Added
 import requests # Added
 from backend import stocks_to_database
+from backend import leaderboard
 
-stocks_to_database.ENDPOINT.insert_stock("Gabriel112811", "123456", 3, 12000, "now", "Tesla AG")
+#stocks_to_database.ENDPOINT.insert_stock("Gabriel112811", "123456", 3, 12000, "now", "Tesla AG")
+leaderboard.ENDPOINT.update_leaderboard("GABRIEL112811", "51000", )
 exit()
 
 app = Flask(__name__)

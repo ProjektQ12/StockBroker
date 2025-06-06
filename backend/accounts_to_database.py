@@ -1,6 +1,6 @@
 import sqlite3
 import hashlib
-import datetime
+from datetime import datetime
 
 backend_protokol = {  #Das wird verwendet, um dem Frontend (Laurens) zu kommunizieren, was passiert ist.
     "success":False,
@@ -149,7 +149,8 @@ def disconnect():
 
 def insert_account(username, password, email) -> bool: #Habe ich umbenannt, damit klar ist, was passiert
     cursor.execute(
-        f"INSERT INTO all_users VALUES ('{username}','{my_hash(password)}', '{email}', 50000.0)")
+        f"INSERT INTO all_users VALUES ('{username}','{my_hash(password)}', '{email}', "
+        f"50000.0, '', '', datetime.now().strftime('%Y-%m-%d %H:%M:%f'))")
     cursor.execute(f"SELECT username FROM all_users WHERE username = '{username}'")
     return is_valid_logindata(username, password)
 
