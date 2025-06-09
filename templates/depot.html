@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Mein Depot - StockBroker App{% endblock %}
+
+{% block content %}
+<style>
+    /* Spezifische Styles für das Depot */
+    .depot-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #eee;
+    }
+    .depot-header h2 {
+        margin: 0;
+        font-size: 2em;
+        color: #333;
+    }
+    .depot-header h2 small {
+        font-size: 0.6em;
+        color: #666;
+        display: block;
+    }
+    #refresh-button {
+        position: relative;
+        overflow: hidden; /* Wichtig für die Progress-Bar */
+        transition: background-color 0.3s, color 0.3s;
+    }
+    #refresh-button .progress-bar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 0;
+        background-color: rgba(255, 255, 255, 0.3);
+        transition: width 60s linear; /* 60 Sekunden Animation */
+    }
+    #refresh-button:disabled {
+        background-color: #6c757d;
+        cursor: not-allowed;
+    }
+    .depot-summary {
+        text-align: right;
+        font-size: 1.1em;
+        margin-top: 1.5rem;
+    }
+    .depot-summary p { margin: 5px 0; }
+    .depot-summary strong { color: #000; }
+    .text-success { color: #198754; }
+    .text-danger { color: #dc3545; }
+    .text-muted { color: #6c757d; }
+</style>
+
+<div class="content-container">
+    <div class="depot-header">
+        <div>
+            <h2>
+                <span id="total-value">€{{ "{:,.2f}".format(depot.total_net_worth) }}</span>
+                <small>Depotgesamtwert</small>
+            </h2>
+        </div>
+        <button id="refresh-button" class="form-button">
+            <div class="progress-bar"></div>
+            <span class="button-text">Aktualisieren</span>
+        </button>
+    </div>
+
+    <h3>Ihre Positionen</h3>
+    <table class="table table-hover" id="positions-table">
+        <thead>
+            <tr>
+                <th>Ticker</th>
+                <th style="text-align: right;">Menge</th>
+                <th style="text-align: right;">Avg. Kaufpreis</th>
+                <th style="text-align: right;">Akt. Kurs</th>
+                <th style="text-align: right;">Akt. Wert</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for pos in depot.positions %}
+            <tr>
+                <td><strong>{{ pos.ticker }}</strong></td>
+                <td style="text-align: right;">{{ pos.quantity }}</td>
+                <td style="text-align: right;">€{{ "{:,.2f}".format(pos.average_purchase_price) }}</td>
+                <td style="text-align: right;">
+                    {% if pos.current_price %}
+                        €{{ "{:,.2f}".format(pos.current_price) }}
+                    {% else %}
+                        <span class="text-muted">N/A</span>
+                    {% endif %}
+                </td>
+                <td style="text-align: right;">
+                    {% if pos.current_value %}
+                        €{{ "{:,.2f}".format(pos.current_value) }}
+                    {% else %}
+                        <span class="text-muted">N/A</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" style="text-align: center;">Sie haben noch keine Positionen in Ihrem Depot.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="depot-summary">
+        <p>Portfolio-Wert: <strong><span id="portfolio-value">€{{ "{:,.2f}".format(depot.portfolio_value) }}</span></strong></p>
+        <p>Cash: <strong><span id="cash-balance">€{{ "{:,.2f}".format(depot.cash_balance) }}</span></strong></p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const refreshButton = document.getElementById('refresh-button');
+    const progressBar = refreshButton.querySelector('.progress-bar');
+    const buttonText = refreshButton.querySelector('.button-text');
+
+    refreshButton.addEventListener('click', function() {
+        // Button deaktivieren und Animation starten
+        this.disabled = true;
+        buttonText.textContent = 'Lädt...';
+        progressBar.style.width = '100%';
+
+        // Nach 60 Sekunden den Button wieder freigeben
+        setTimeout(() => {
+            this.disabled = false;
+            buttonText.textContent = 'Aktualisieren';
+            progressBar.style.transition = 'none'; // Animation zurücksetzen
+            progressBar.style.width = '0';
+            // Timeout, um die Transition wieder zu aktivieren, nachdem sie zurückgesetzt wurde
+            setTimeout(() => {
+                progressBar.style.transition = 'width 60s linear';
+            }, 50);
+        }, 60000);
+
+        // API-Aufruf zum Aktualisieren der Daten
+        fetch("{{ url_for('api_refresh_depot') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(response => {
+            // Flashed Messages werden vom Server gerendert nach der Seitenneuladung.
+            // Besser ist es, die Nachricht per JS anzuzeigen oder die Seite neu zu laden.
+            // Wir laden die Seite neu, um die Flashed Message anzuzeigen.
+            window.location.reload();
+            return response.json(); // Wir verarbeiten es trotzdem, falls wir uns gegen den Reload entscheiden
+        })
+        .then(result => {
+             if (!result.success) {
+                 // Zeige eine Fehlermeldung an, wenn wir nicht neu laden
+                 console.error(result.message);
+             }
+        })
+        .catch(error => {
+            console.error('Fetch-Fehler:', error);
+            buttonText.textContent = 'Fehler!';
+        });
+    });
+});
+</script>
+{% endblock %}

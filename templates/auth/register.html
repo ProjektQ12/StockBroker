@@ -7,7 +7,7 @@
     <h1>Konto erstellen</h1>
     <form method="POST" action="{{ url_for('register_page') }}">
         <div class="form-group">
-            <label for="username">Benutzername</label>
+            <label for="username">öffentlicher Benutzername</label>
             {# Benutze form_data, um den Wert bei Fehler wieder einzusetzen #}
             <input type="text" id="username" name="username" value="{{ form_data.username if form_data and form_data.username else '' }}" required>
         </div>

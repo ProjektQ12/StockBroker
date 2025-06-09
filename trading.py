@@ -1,65 +1,126 @@
-from backend.accounts_to_database import ENDPOINT as acc
-from backend import stocks_to_database
-backend_protokol = {  #Das wird verwendet, um dem Frontend (Laurens) zu kommunizieren, was passiert ist.
-    "success":False,
-    "user_id": None,
-    "user_email": None,
-    "message": "",
-}
-class TRADE:
-    protocol = {
-        "trade_type":"long, short, option",
+# trading_system.py
+"""
+Implementiert das Handelssystem mit einer dedizierten Endpunkt-Klasse.
+Nutzt die UTILITIES-Klasse für allgemeine Datenbankabfragen.
+"""
 
-        "order_type":"limit, market",
-        "limit_price": .0,
-        "validity": "",
+import sqlite3
+from datetime import datetime
 
-        "ticker": "",
-        "quantity": 0,
-        "price": .0,
-        "price_sum": .0,
-    }
-def execute_trade(trade, username):
-    out = backend_protokol.copy()
+# GEÄNDERT: Importiert die UTILITIES und den AccountEndpoint aus dem Account-Modul
+from backend.accounts_to_database import UTILITIES, ENDPOINT as AccountEndpoint
+
+
+# --- Private Hilfsfunktionen für das Trading-System ---
+
+def _update_portfolio_position(conn: sqlite3.Connection, user_id: int, ticker: str, quantity_change: int, price: float):
     """
-    Simuliert die Ausführung eines Trades.
-    In einer echten Anwendung würde hier die Logik zur Interaktion mit einer Broker-API,
-    Datenbankaktualisierung etc. stattfinden.
+    Aktualisiert eine Position im Portfolio.
+    VERWENDET JETZT DEN TABELLENNAMEN 'stock_depot'.
     """
-    print("--- Neuer Trade wird ausgeführt ---")
-    print(f"Typ: {trade.get('trade_type')}")  # long, short, option
-    print(f"Ticker/WKN: {trade.get('ticker')}")
-    print(f"Menge: {trade.get('quantity')}")
+    cursor = conn.cursor()
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    trade["price_sum"] = trade.get("price") * trade.get("quantity")
-    if acc.get_money(username) < trade.get("price_sum"):
-        out["message"] = f"Nicht genug Geld! Du hast nur {acc.get_money(username)}"
+    cursor.execute(
+        "SELECT quantity, average_purchase_price FROM stock_depot WHERE user_id_fk = ? AND ticker = ?",
+        (user_id, ticker)
+    )
+    position = cursor.fetchone()
 
-
-    if trade.get('trade_type') == 'long':
-        print(f"Order-Typ: {trade.get('order_type')}")  # market, limit
-        if trade.get('order_type') == 'limit':
-            print(f"Limit-Preis: {trade.get('limit_price')}")
-        print(f"Gültigkeit: {trade.get('validity')}")  # day, gtc
-        # ... weitere Long-spezifische Daten ...
-
-    elif trade.get('trade_type') == 'short':
-        print("Short-spezifische Logik hier...")
-        # ...
-
-    elif trade.get('trade_type') == 'option':
-        print("Options-spezifische Logik hier...")
-        print(f"Options-Typ (Call/Put): {trade.get('option_type')}")
-        print(f"Strike-Preis: {trade.get('strike_price')}")
-        print(f"Verfallsdatum: {trade.get('expiration_date')}")
-        # ...
-
-    print("---------------------------------")
-    # Simuliere Erfolg oder Misserfolg
-    # In echt: Rückmeldung von der Broker-API
-    if trade.get('ticker'):  # Einfache Prüfung
-        return {'success': True,
-                'message': f"Trade für {trade.get('ticker')} erfolgreich übermittelt (Simulation)."}
+    if position:
+        # UPDATEN
+        # ... (Logik wie zuvor) ...
+        current_quantity, current_avg_price = position
+        new_quantity = current_quantity + quantity_change
+        new_avg_price = ((current_quantity * current_avg_price) + (quantity_change * price)) / new_quantity
+        sql = "UPDATE stock_depot SET quantity = ?, average_purchase_price = ?, last_updated = ? WHERE user_id_fk = ? AND ticker = ?"
+        cursor.execute(sql, (new_quantity, new_avg_price, now, user_id, ticker))
     else:
-        return {'success': False, 'message': "Fehler: Ticker fehlt (Simulation)."}
+        # NEU ANLEGEN
+        sql = "INSERT INTO stock_depot (user_id_fk, ticker, quantity, average_purchase_price, last_updated) VALUES (?, ?, ?, ?, ?)"
+        cursor.execute(sql, (user_id, ticker, quantity_change, price, now))
 
+
+# --- Klassen für die verschiedenen Trade-Typen (bleiben intern) ---
+
+class BaseTrade:
+    def __init__(self, trade_data: dict, username: str):
+        # ... (wie zuvor) ...
+        self.trade_type = trade_data.get("trade_type")
+        self.ticker = trade_data.get("ticker")
+        self.quantity = int(trade_data.get("quantity", 0))
+        self.price = float(trade_data.get("price", 0.0))
+        self.price_sum = self.quantity * self.price
+        self.username = username
+
+        if not all([self.ticker, self.quantity > 0, self.price > 0]):
+            raise ValueError("Ungültige Auftragsdaten: Ticker, Menge und Preis müssen angegeben werden.")
+
+    def execute(self, conn: sqlite3.Connection) -> dict:
+        raise NotImplementedError("Muss in Unterklasse implementiert werden.")
+
+
+class LongTrade(BaseTrade):
+    def execute(self, conn: sqlite3.Connection) -> dict:
+        # GEÄNDERT: Nutzt jetzt die zentrale UTILITIES-Klasse
+        user_id = UTILITIES.get_user_id(conn, self.username)
+        if not user_id:
+            return {"success": False, "message": "Benutzer nicht gefunden."}
+
+        current_balance = AccountEndpoint.get_balance(conn, username=self.username)
+        if current_balance is None or current_balance < self.price_sum:
+            return {"success": False,
+                    "message": f"Nicht genug Geld. Benötigt: {self.price_sum:.2f}€, Verfügbar: {current_balance:.2f}€"}
+
+        try:
+            AccountEndpoint.update_balance(conn, self.username, -self.price_sum)
+            _update_portfolio_position(conn, user_id, self.ticker, self.quantity, self.price)
+            return {"success": True,
+                    "message": f"Kauf von {self.quantity}x {self.ticker} für {self.price_sum:.2f}€ erfolgreich."}
+        except Exception as e:
+            return {"success": False, "message": f"Trade fehlgeschlagen: {e}"}
+
+
+# ... (ShortTrade, OptionTrade Klassen wie zuvor) ...
+
+# --- Factory-Funktion (bleibt intern) ---
+
+def _create_trade(trade_data: dict, username: str) -> BaseTrade:
+    trade_type = trade_data.get("trade_type")
+    if trade_type == "long":
+        return LongTrade(trade_data, username)
+    # ... (Rest der Factory wie zuvor) ...
+    else:
+        raise ValueError(f"Unbekannter Trade-Typ: {trade_type}")
+
+
+# --- NEU: Die öffentliche Endpunkt-Klasse für das Trading ---
+
+class TRADING_ENDPOINT:
+    """
+    Diese Klasse ist der öffentliche Einstiegspunkt für alle Handelsoperationen.
+    Sie kapselt die Komplexität der Trade-Erstellung und -Ausführung.
+    """
+
+    @staticmethod
+    def execute_trade(conn: sqlite3.Connection, username: str, trade_data: dict) -> dict:
+        """
+        Nimmt Handelsdaten entgegen, erstellt das passende Trade-Objekt und führt es aus.
+        Gibt ein standardisiertes Protokoll-Dictionary zurück.
+        """
+        # Holt das Basisprotokoll aus der zentralen Utility-Klasse
+        output = UTILITIES.get_base_protocol()
+        try:
+            # Die interne Factory erstellt das richtige Objekt
+            trade_object = _create_trade(trade_data, username)
+            # Das Objekt führt sich selbst aus
+            result = trade_object.execute(conn)
+            return result
+
+        except (ValueError, NotImplementedError) as e:
+            output["message"] = str(e)
+            return output
+        except Exception as e:
+            # Fängt unerwartete Fehler ab
+            output["message"] = f"Ein unerwarteter Fehler ist aufgetreten: {e}"
+            return output

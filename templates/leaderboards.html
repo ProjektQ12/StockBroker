@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Leaderboard - StockBroker App{% endblock %}
+
+{% block content %}
+<div class="content-container">
+    <h1>Leaderboard</h1>
+    <p class="info-box">Hier sind die reichsten Broker unserer Plattform. Die Daten werden maximal alle 10 Minuten aktualisiert.</p>
+
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th style="width: 80px;">Rang</th>
+                <th>Username</th>
+                <th style="text-align: right;">Gesamtvermögen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in leaderboard_data %}
+            <tr>
+                <td>#{{ loop.index + ((current_page - 1) * 50) }}</td>
+                <td>{{ entry.username }}</td>
+                <td style="text-align: right;">{{ "€{:,.2f}".format(entry.net_worth) }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="3" style="text-align: center;">Das Leaderboard ist noch leer.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if total_pages > 1 %}
+    <nav class="pagination" aria-label="Leaderboard Navigation">
+        {% for p in range(1, total_pages + 1) %}
+            <a href="{{ url_for('leaderboard_page', page=p) }}" class="{{ 'active' if p == current_page else '' }}">{{ p }}</a>
+        {% endfor %}
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,39 +1,76 @@
 #// app.py
-#REPLACE ENTIRE FILE
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+
+from flask import Flask, render_template, request, redirect, url_for, flash, session, g, jsonify
 import yfinance as yf
 import plotly.graph_objects as go
 import os
-import pandas as pd
-from backend.accounts_to_database import ENDPOINT as acc
-import trading
 import json # Added
 import requests # Added
-from backend import stocks_to_database
-from backend import leaderboard
+import sqlite3
 
-#stocks_to_database.ENDPOINT.insert_stock("Gabriel112811", "123456", 3, 12000, "now", "Tesla AG")
-leaderboard.ENDPOINT.update_leaderboard("GABRIEL112811", "51000", )
-exit()
+from functools import wraps
+from datetime import datetime, timedelta
+
+from backend.accounts_to_database import ENDPOINT as AccountEndpoint
+from trading import TRADING_ENDPOINT as TRADING
+from backend.leaderboard import LeaderboardEndpoint
+from backend.depot_system import DepotEndpoint
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# --- Alpha Vantage API Key ---
+#PyCharms sql modus muss beendet werden
+DATABASE_FILE = "backend/StockBroker.db"
+
+# Caching-Variable für das Leaderboard
+leaderboard_cache = {"last_updated": None}
+
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE_FILE)
+    return db
+
+@app.teardown_appcontext
+def close_connection(exception):
+    """Schließt die Datenbankverbindung am Ende des Requests."""
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
+
+# --- Decorator für Login-Schutz ---
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Bitte melde dich an, um diese Seite zu sehen.', 'warning')
+            return redirect(url_for('login_page'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 ALPHA_VANTAGE_API_KEY = None
-try:
-    with open('keys.json', 'r') as f:
-        keys = json.load(f)
-        ALPHA_VANTAGE_API_KEY = keys.get('alpha_vantage_api_key')
-except FileNotFoundError:
-    print("WARNUNG: keys.json nicht gefunden. Alpha Vantage API-Funktionalität ist deaktiviert.")
-except json.JSONDecodeError:
-    print("WARNUNG: keys.json ist nicht valides JSON. Alpha Vantage API-Funktionalität ist deaktiviert.")
 
-if not ALPHA_VANTAGE_API_KEY:
-    print("WARNUNG: Alpha Vantage API Key nicht in keys.json gefunden oder Datei fehlerhaft. Die Suche wird nicht funktionieren.")
+def configure_ALPHA_VANTAGE_API():
+    global ALPHA_VANTAGE_API_KEY
+    try:
+        with open('keys.json', 'r') as f:
+            keys = json.load(f)
+            ALPHA_VANTAGE_API_KEY = keys.get('alpha_vantage_api_key')
+            print("key erhalten")
+    except FileNotFoundError:
+        print("WARNUNG: keys.json nicht gefunden.")
+        raise
+    except json.JSONDecodeError:
+        print("WARNUNG: keys.json ist nicht valides JSON. Alpha Vantage API-Funktionalität ist deaktiviert.")
+        raise
+    if not ALPHA_VANTAGE_API_KEY:
+        print("WARNUNG: Alpha Vantage API Key nicht in keys.json gefunden oder Datei fehlerhaft.")
+        raise ValueError # Nur raise geht irgendwie nicht
 
-# -- Konstanten für Dropdown-Optionen (bleiben gleich) --
+configure_ALPHA_VANTAGE_API()
+
+# -- Konstanten für Dropdown-Optionen beim Graph --
 AVAILABLE_PERIODS = [
     ("5d", "5 Tage"), ("1mo", "1 Monat"), ("3mo", "3 Monate"),
     ("6mo", "6 Monate"), ("1y", "1 Jahr"), ("2y", "2 Jahre"),
@@ -58,8 +95,10 @@ def login_page():
         if not identifier or not password:
             flash('Bitte Anmeldedaten eingeben.', 'error')
         else:
-            result = acc.login(identifier, password)
+            conn = get_db()
+            result = AccountEndpoint.login(conn, identifier, password)
             if result.get('success'):
+                conn.commit()
                 session['user_id'] = result.get('user_id')
                 session['user_email'] = result.get('email')
                 session['username'] = result.get('username')
@@ -91,8 +130,10 @@ def register_page():
         elif password != password_confirm:
             flash('Die Passwörter stimmen nicht überein.', 'error')
         else:
-            result = acc.create_account(password, email, username)
+            conn = get_db()
+            result = AccountEndpoint.create_account(conn, password, email, username)
             if result.get('success'):
+                conn.commit()
                 flash(result.get('message', 'Konto erstellt! Bitte logge dich ein.'), 'success')
                 return redirect(url_for('login_page'))
             else:
@@ -119,16 +160,20 @@ def reset_password_request_page():
         if not email:
             flash('Bitte gib deine E-Mail-Adresse ein.', 'error')
         else:
-            result = acc.request_password_reset(email)
+            conn = get_db()
+            result = AccountEndpoint.request_password_reset(conn, email)
             flash(result.get('message', 'Anweisungen gesendet, falls Konto existiert.'), 'info')
             email_sent_flag = True
+            conn.commit()
     return render_template('auth/reset_request.html', email_sent=email_sent_flag, form_data=form_data)
 
 
 @app.route('/reset-password/<token>', methods=['GET', 'POST'])
 def reset_password_confirm_page(token):
-    token_verification = acc.verify_reset_token(token)
+    conn = get_db()
+    token_verification = AccountEndpoint.verify_reset_token(conn, token)
     if not token_verification.get('success'):
+        conn.commit()
         flash(token_verification.get('message', 'Ungültiger oder abgelaufener Link.'), 'error')
         return redirect(url_for('login_page'))
 
@@ -143,13 +188,16 @@ def reset_password_confirm_page(token):
         elif len(new_password) < 6:
             flash('Das neue Passwort muss mindestens 6 Zeichen lang sein.', 'error')
         else:
-            result = acc.reset_password_with_token(token, new_password)
+            #conn wird oben schon gemacht
+            result = AccountEndpoint.reset_password_with_token(conn, token, new_password)
             if result.get('success'):
+                conn.commit()
                 flash(result.get('message', 'Passwort erfolgreich geändert.'), 'success')
                 return redirect(url_for('login_page'))
             else:
                 flash(result.get('message', 'Fehler beim Ändern des Passworts.'), 'error')
     return render_template('auth/reset_confirm.html', token=token)
+
 
 @app.route('/reset-password-enter-token', methods=['GET', 'POST'])
 def reset_password_enter_token_page():
@@ -176,12 +224,15 @@ def trade_page(ticker_symbol):
 
     trade_mode = request.args.get('mode', 'long')
 
+    current_price = basic_info.get('info_dict', {}).get('currentPrice',
+                                                        basic_info.get('info_dict', {}).get('regularMarketPrice',
+                                                                                            'N/A'))
+
     if request.method == 'POST':
         trade_data = {
             "user_id": session.get('user_id'),
             "ticker": ticker_symbol,
             "trade_type": trade_mode,
-            "timestamp": pd.Timestamp.now().isoformat()
         }
 
         if trade_mode == 'long':
@@ -189,6 +240,8 @@ def trade_page(ticker_symbol):
             trade_data['order_type'] = request.form.get('order_type')
             if trade_data['order_type'] == 'limit':
                 trade_data['limit_price'] = request.form.get('limit_price', type=float)
+            else:
+                trade_data['price'] = current_price
             trade_data['validity'] = request.form.get('validity')
         elif trade_mode == 'short':
             trade_data['quantity'] = request.form.get('quantity_short', type=int)
@@ -201,33 +254,23 @@ def trade_page(ticker_symbol):
         if not trade_data.get('quantity') and not trade_data.get('quantity_short') and not trade_data.get('quantity_option'):
             flash('Bitte gib eine Menge ein.', 'error')
         else:
-            trade_result = trading.execute_trade(trade_data)
+            conn = get_db()
+            trade_result = TRADING.execute_trade(conn, session.get('username'), trade_data)
             if trade_result.get('success'):
+                conn.commit()
                 flash(trade_result.get('message'), 'success')
                 return redirect(url_for('trade_page', ticker_symbol=ticker_symbol, mode=trade_mode))
             else:
                 flash(trade_result.get('message'), 'error')
 
-    current_price = basic_info.get('info_dict', {}).get('currentPrice',
-                                                        basic_info.get('info_dict', {}).get('regularMarketPrice', 'N/A'))
 
+    #Das geld muss an trading.py
     return render_template('trade_page.html',
                            ticker=ticker_symbol,
                            company_name=basic_info.get('name', ticker_symbol),
                            current_price=current_price,
                            current_mode=trade_mode)
 
-@app.route('/dashboard')
-def dashboard_page():
-    if 'user_id' not in session:
-        flash('Bitte logge dich ein, um diese Seite zu sehen.', 'warning')
-        return redirect(url_for('login_page'))
-    # display_name an das Template übergeben
-    display_name = session.get('username', session.get('user_email', 'Benutzer'))
-    return render_template('dashboard.html', display_name=display_name)
-
-
-# -- HELPER FUNKTIONEN --
 def get_stock_basic_info_yfinance(ticker_symbol): # Renamed to avoid conflict
     try:
         stock = yf.Ticker(ticker_symbol)
@@ -272,7 +315,6 @@ def search_alpha_vantage(keywords):
     except Exception as e:
         return None, f"Unbekannter Fehler bei der Alpha Vantage Suche: {str(e)}"
 
-
 def get_stock_detailed_data(ticker_symbol):
     stock_data = {'ticker': ticker_symbol, 'error': None}
     try:
@@ -290,7 +332,9 @@ def get_stock_detailed_data(ticker_symbol):
         stock_data['info'] = info
         try:
             stock_data['financials_html'] = stock.financials.to_html(classes='table table-sm table-striped table-hover', border=0) if not stock.financials.empty else "Keine Finanzdaten verfügbar."
-        except Exception: stock_data['financials_html'] = "Finanzdaten konnten nicht geladen werden."
+        except Exception:
+            stock_data['financials_html'] = "Finanzdaten konnten nicht geladen werden."
+
         try:
             stock_data['major_holders_html'] = stock.major_holders.to_html(classes='table table-sm table-striped table-hover', border=0) if stock.major_holders is not None and not stock.major_holders.empty else "Keine Daten zu Haupteignern verfügbar."
         except Exception: stock_data['major_holders_html'] = "Daten zu Haupteignern konnten nicht geladen werden."
@@ -313,7 +357,6 @@ def get_stock_detailed_data(ticker_symbol):
     except Exception as e:
         stock_data['error'] = f"Allgemeiner Fehler beim Abrufen der Detaildaten für '{ticker_symbol}': {str(e)}"
     return stock_data
-
 
 def determine_actual_interval_and_period(selected_period, selected_quality):
     actual_period = selected_period
@@ -346,11 +389,11 @@ def determine_actual_interval_and_period(selected_period, selected_quality):
 
     # Anpassungen basierend auf yfinance Limits für Intervalle
     original_period_for_note = actual_period
-    # Für 1m Intervall: max 7 Tage, aber yfinance sagt oft 5d sei besser für 1m.
-    # yfinance erlaubt 1m für bis zu 7 Tage, aber Daten sind intraday und haben nur für 5 Handelstage lückenlos.
+    # Für 1 m Intervall: max. 7 Tage, aber yfinance sagt oft 5d sei besser für 1 m.
+    # yfinance erlaubt 1 m für bis zu 7 Tage, aber Daten sind intraday und haben nur für 5 Handelstage lückenlos.
     # Für die feinsten Auflösungen:
     if actual_interval == "1m" and actual_period not in ["1d", "2d", "3d", "4d", "5d", "7d"]: # Max 7d for 1m data
-        actual_period = "5d" # Sicherer Standard für 1m
+        actual_period = "5d" # Sicherer Standard für 1 m
     # Für Intervalle <60m: Daten sind für die letzten 60 Tage verfügbar
     elif actual_interval in ["2m", "5m", "15m", "30m"] and actual_period not in ["1d", "5d", "1mo", "2mo", "60d"]:
          if selected_period == "3mo" or selected_period == "6mo": actual_period = "2mo" # yf max 60d
@@ -366,7 +409,6 @@ def determine_actual_interval_and_period(selected_period, selected_quality):
         adjustment_note = (f"Hinweis: Zeitraum für Qualität '{quality_display}' und ursprüngliche Auswahl '{period_display_original}' "
                            f"auf '{period_display_actual}' angepasst, um Intervall '{actual_interval}' zu unterstützen.")
     return actual_period, actual_interval, adjustment_note
-
 
 def generate_stock_plotly_chart(ticker_symbol, period="1y", interval="1d", quality_note=None, remove_gaps=True):
     chart_html = None
@@ -409,12 +451,12 @@ def generate_stock_plotly_chart(ticker_symbol, period="1y", interval="1d", quali
             )
 
             if remove_gaps:
-                # Filter out non-trading days more reliably for various intervals
+                # Filter out non-TRADING days more reliably for various intervals
                 if interval in ["1d", "1wk", "1mo", "3mo"]: # For daily and longer, Sat/Sun are the primary gaps
                      fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
-                elif 'm' in interval or 'h' in interval: # For intraday, also consider typical market non-trading times
+                elif 'm' in interval or 'h' in interval: # For intraday, also consider typical market non-TRADING times
                     # This is complex as it depends on the exchange.
-                    # A general approach is to remove weekends. More specific non-trading hours are harder.
+                    # A general approach is to remove weekends. More specific non-TRADING hours are harder.
                     fig.update_xaxes(rangebreaks=[
                         dict(bounds=["sat", "mon"]), # Weekends
                         # dict(pattern="hour", bounds=[16, 9.5]) # Example for US market, but timezone sensitive
@@ -446,10 +488,21 @@ def generate_stock_plotly_chart(ticker_symbol, period="1y", interval="1d", quali
 
     return chart_html, error_msg, company_name
 
-    return chart_html, error_msg, company_name
+
+@app.route('/dashboard')
+@login_required
+def dashboard_page():
+    user_id = session['user_id']
+    db = get_db()
+    depot_data = DepotEndpoint.get_depot_details(db, user_id)
+
+    if depot_data is None:
+        flash("Fehler: Dein Benutzerkonto konnte nicht gefunden werden.", 'error')
+        return redirect(url_for('logout'))
+
+    return render_template('depot.html', depot=depot_data)
 
 
-# -- FLASK ROUTEN --
 @app.route('/', methods=['GET'])
 def landing_page():
     # Redirect to search page instead of login if not logged in, or dashboard if logged in
@@ -520,6 +573,61 @@ def stock_detail_page(ticker_symbol):
                            available_qualities=AVAILABLE_QUALITIES)
 
 
+@app.route('/leaderboard')
+def leaderboard_page():
+    db = get_db()
+    now = datetime.now()
+
+    last_update = leaderboard_cache.get("last_updated")
+    if not last_update or (now - last_update) > timedelta(minutes=10):
+        print("Leaderboard wird neu berechnet...")
+        LeaderboardEndpoint.update_all_net_worths(db)
+        db.commit()
+        leaderboard_cache["last_updated"] = now
+
+    page = request.args.get('page', 1, type=int)
+    page_size = 50
+    leaderboard_data = LeaderboardEndpoint.get_paginated_leaderboard(db, page=page, page_size=page_size)
+
+    # Gesamtanzahl der Einträge für die Seitennavigation holen
+    cursor = db.cursor()
+    cursor.execute("SELECT COUNT(*) FROM leaderboard")
+    total_entries = cursor.fetchone()[0]
+    total_pages = (total_entries + page_size - 1) // page_size
+
+    return render_template('leaderboard.html', leaderboard_data=leaderboard_data, current_page=page,
+                           total_pages=total_pages)
+
+#------------
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Bitte melde dich an, um diese Seite zu sehen.', 'warning')
+            return redirect(url_for('login_page'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@app.route('/api/refresh-depot', methods=['POST'])
+@login_required
+def api_refresh_depot():
+    now = datetime.now()
+    last_refresh = session.get('last_depot_refresh')
+
+    # Timezone-naive datetime Objekte für den Vergleich erstellen
+    if last_refresh and (now - datetime.fromisoformat(last_refresh)) < timedelta(minutes=1):
+        return jsonify({"success": False, "message": "Bitte warte eine Minute vor der nächsten Aktualisierung."}), 429
+
+    user_id = session['user_id']
+    db = get_db()
+    depot_data = DepotEndpoint.get_depot_details(db, user_id)
+
+    session['last_depot_refresh'] = now.isoformat()
+    flash('Depot erfolgreich aktualisiert!', 'success')
+    return jsonify({"success": True, "data": depot_data})
+
+
 @app.route('/test_graph')
 def test_graph_page():
     # Use a common ticker for testing, e.g., AAPL or one passed as arg
@@ -560,4 +668,4 @@ def test_graph_page():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True) #Wir nutzen 5001 wegen Mac
+    app.run(host='0.0.0.0', port=5001, debug=False) #Wir nutzen 5001 wegen Mac

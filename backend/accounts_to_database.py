@@ -17,36 +17,7 @@ import secrets
 # Der Unterstrich am Anfang signalisiert, dass diese Funktionen
 # nur für den internen Gebrauch in diesem Modul gedacht sind.
 
-def _get_base_protocol() -> dict:
-    """Erstellt und gibt eine frische Kopie des Standard-Antwortprotokolls zurück."""
-    return {
-        "success": False,
-        "user_id": None,
-        "user_email": None,
-        "message": "",
-    }
 
-
-def _hash_password(password: str, salt: bytes = None) -> tuple[str, str]:
-    if salt is None:
-        salt = os.urandom(16)  # Generiert einen 16-Byte-Salt
-
-    # pbkdf2_hmac ist ein empfohlener Algorithmus für Passwort-Hashing
-    hashed_password = hashlib.pbkdf2_hmac(
-        'sha256',
-        password.encode('utf-8'),
-        salt,
-        100000  # Anzahl der Iterationen
-    )
-    # Salt wird als Hex-String gespeichert, um ihn in der DB ablegen zu können
-    return hashed_password.hex(), salt.hex()
-
-
-def _verify_password(stored_password_hash: str, stored_salt_hex: str, provided_password: str) -> bool:
-    salt = bytes.fromhex(stored_salt_hex)
-    # Hashe das eingegebene Passwort mit dem gespeicherten Salt
-    rehashed_password, _ = _hash_password(provided_password, salt)
-    return rehashed_password == stored_password_hash
 
 
 def _is_username_in_db(conn: sqlite3.Connection, username: str) -> bool:
@@ -72,6 +43,51 @@ def _is_email_format_valid(email: str) -> bool:
     return True
 
 
+class UTILITIES:
+    """Enthält statische Utility-Methoden, die von mehreren Modulen genutzt werden können."""
+
+    @staticmethod
+    def get_base_protocol() -> dict:
+        """Erstellt und gibt eine frische Kopie des Standard-Antwortprotokolls zurück."""
+        return {
+            "success": False,
+            "user_id": None,
+            "user_email": None,
+            "message": "",
+        }
+
+    @staticmethod
+    def get_user_id(conn: sqlite3.Connection, username: str) -> int | None:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM all_users WHERE username = ?", (username,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+
+    @staticmethod
+    def get_username(conn: sqlite3.Connection, user_id: int) -> str | None:
+        cursor = conn.cursor()
+        cursor.execute("SELECT username FROM all_users WHERE user_id = ?", (user_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+
+
+
+    @staticmethod
+    def hash_password(password: str, salt: bytes = None) -> tuple[str, str]:
+        """Hasht ein Passwort sicher mit einem Salt."""
+        if salt is None:
+            salt = os.urandom(16)
+        hashed_password = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
+        return hashed_password.hex(), salt.hex()
+
+    @staticmethod
+    def verify_password(stored_password_hash: str, stored_salt_hex: str, provided_password: str) -> bool:
+        """Überprüft, ob das angegebene Passwort mit dem gespeicherten Hash übereinstimmt."""
+        salt = bytes.fromhex(stored_salt_hex)
+        rehashed_password, _ = UTILITIES.hash_password(provided_password, salt)
+        return rehashed_password == stored_password_hash
+
+
 class ENDPOINT:
     """
     Diese Klasse enthält alle Funktionen, die von einem Frontend oder Hauptskript aufgerufen werden können.
@@ -80,7 +96,7 @@ class ENDPOINT:
 
     @staticmethod
     def create_account(conn: sqlite3.Connection, password: str, email: str, username: str) -> dict:
-        output = _get_base_protocol()
+        output = UTILITIES.get_base_protocol()
 
         if not all([password, email, username]):
             output["message"] = "Bitte alle Felder ausfüllen, dafür sind sie da!"
@@ -100,11 +116,11 @@ class ENDPOINT:
             return output
 
         try:
-            hashed_password, salt = _hash_password(password)
+            hashed_password, salt = UTILITIES.hash_password(password)
             cursor = conn.cursor()
 
             sql = """
-                INSERT INTO all_users (username, password_hash, salt, email, geld, joined_date) 
+                INSERT INTO all_users (username, password_hash, salt, email, money, joined_date) 
                 VALUES (?, ?, ?, ?, ?, ?)
             """
             params = (
@@ -122,15 +138,14 @@ class ENDPOINT:
             output["user_id"] = cursor.lastrowid
             output["user_email"] = email.lower()
 
-        except sqlite3.Error as e:
-            output["message"] = (f"Ein Datenbankfehler ist aufgetreten: {e}\n"
-                                 f"Ist nur ein Hobbyprojekt, sorry!")
+        except sqlite3.Error:
+            output["message"] = f"Es kam zu einem Fehler. Ist nur ein Hobbyprojekt, sorry!"
 
         return output
 
     @staticmethod
     def login(conn: sqlite3.Connection, username_email: str, password: str) -> dict:
-        output = _get_base_protocol()
+        output = UTILITIES.get_base_protocol()
         username_email = username_email.lower()
 
         # Bestimme, ob mit E-Mail oder Username eingeloggt wird
@@ -152,7 +167,7 @@ class ENDPOINT:
         user_id, username, stored_hash, stored_salt, user_email = user_data
 
         # Verifiziere das Passwort mit der sicheren Funktion
-        if _verify_password(stored_hash, stored_salt, password):
+        if UTILITIES.verify_password(stored_hash, stored_salt, password):
             output["success"] = True
             output["message"] = f"Willkommen zurück, {username}!"
             output["user_id"] = user_id
@@ -179,9 +194,14 @@ class ENDPOINT:
         return users
 
     @staticmethod
-    def get_balance(conn: sqlite3.Connection, username: str) -> float | None:
+    def get_balance(conn: sqlite3.Connection, username: str=None, user_id: int=None) -> float | None:
+        if username is None and user_id is None:
+            return None
+        if not user_id:
+            user_id = UTILITIES.get_user_id(conn, username)
+
         cursor = conn.cursor()
-        cursor.execute("SELECT money FROM all_users WHERE username = ?", (username,))
+        cursor.execute("SELECT money FROM all_users WHERE user_id = ?", (user_id,))
         result = cursor.fetchone()
         return result[0] if result else None
 
@@ -196,7 +216,7 @@ class ENDPOINT:
         if only_subtract and amount > 0:
             return False
 
-        current_balance = ENDPOINT.get_balance(conn, username)
+        current_balance = ENDPOINT.get_balance(conn, username=username)
         if current_balance is None:
             return False  # Benutzer existiert nicht
 
@@ -219,7 +239,7 @@ class ENDPOINT:
         Startet den Prozess zum Zurücksetzen des Passworts.
         Generiert einen Token und speichert ihn in der DB.
         """
-        output = _get_base_protocol()
+        output = UTILITIES.get_base_protocol()
         cursor = conn.cursor()
 
         # Finde den Benutzer anhand der E-Mail
@@ -263,7 +283,7 @@ class ENDPOINT:
     @staticmethod
     def verify_reset_token(conn: sqlite3.Connection, token: str) -> dict:
         """Überprüft, ob ein Token gültig und nicht abgelaufen ist."""
-        output = _get_base_protocol()
+        output = UTILITIES.get_base_protocol()
         cursor = conn.cursor()
 
         sql = "SELECT expires_at FROM password_resets WHERE token = ?"
@@ -287,7 +307,7 @@ class ENDPOINT:
     @staticmethod
     def reset_password_with_token(conn: sqlite3.Connection, token: str, new_password: str) -> dict:
         """Setzt das Passwort mit einem gültigen Token zurück."""
-        output = _get_base_protocol()
+        output = UTILITIES.get_base_protocol()
 
         # Zuerst den Token verifizieren
         verification = ENDPOINT.verify_reset_token(conn, token)
@@ -308,7 +328,7 @@ class ENDPOINT:
 
         try:
             # Erstelle einen neuen Hash und Salt für das neue Passwort
-            new_hashed_password, new_salt = _hash_password(new_password)
+            new_hashed_password, new_salt = UTILITIES.hash_password(new_password)
 
             # Aktualisiere das Passwort des Benutzers in der Haupttabelle
             update_sql = "UPDATE all_users SET password_hash = ?, salt = ? WHERE user_id = ?"
