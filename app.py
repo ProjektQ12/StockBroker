@@ -4,15 +4,16 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 import yfinance as yf
 import plotly.graph_objects as go
 import os
-import json # Added
-import requests # Added
+import json
+import requests
 import sqlite3
-
 from functools import wraps
 from datetime import datetime, timedelta
+from apscheduler.schedulers.background import BackgroundScheduler
 
+# Lokale Imports
 from backend.accounts_to_database import ENDPOINT as AccountEndpoint
-from trading import TRADING_ENDPOINT as TRADING
+from backend.trading import TradingEndpoint # Geänderter Import
 from backend.leaderboard import LeaderboardEndpoint
 from backend.depot_system import DepotEndpoint
 
@@ -23,7 +24,6 @@ app.secret_key = os.urandom(24)
 DATABASE_FILE = "backend/StockBroker.db"
 
 # Caching-Variable für das Leaderboard
-leaderboard_cache = {"last_updated": None}
 
 def get_db():
     db = getattr(g, '_database', None)
@@ -38,7 +38,7 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
-# --- Decorator für Login-Schutz ---
+# --- Decorator ---
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -48,9 +48,8 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-
+  #--API--
 ALPHA_VANTAGE_API_KEY = None
-
 def configure_ALPHA_VANTAGE_API():
     global ALPHA_VANTAGE_API_KEY
     try:
@@ -70,6 +69,67 @@ def configure_ALPHA_VANTAGE_API():
 
 configure_ALPHA_VANTAGE_API()
 
+def update_leaderboard_on_startup():
+    print("Initialisiere Leaderboard beim Start...")
+    conn = None
+    try:
+        conn = sqlite3.connect(DATABASE_FILE)
+        LeaderboardEndpoint.update_all_net_worths(conn)
+        conn.commit()
+        print("Leaderboard wurde erfolgreich aktualisiert.")
+    except sqlite3.Error as e:
+        print(f"Fehler bei der initialen Leaderboard-Aktualisierung: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/cancel_order/<int:order_id>', methods=['POST'])
+@login_required
+def cancel_order_route(order_id):
+    """Storniert einen Auftrag."""
+    db = get_db()
+    result = TradingEndpoint.cancel_order(db, session['user_id'], order_id)
+    if result.get('success'):
+        db.commit()
+        flash(result.get('message'), 'success')
+    else:
+        flash(result.get('message'), 'error')
+    return redirect(url_for('my_orders_page'))
+
+def scheduled_order_processing_job():
+    """Wird vom Scheduler aufgerufen, um offene Aufträge zu verarbeiten."""
+    # app_context wird benötigt, damit der Hintergrund-Thread auf die App und die DB zugreifen kann
+    with app.app_context():
+        db = get_db()
+        try:
+            print("[Scheduler] Verarbeite offene Aufträge...")
+            TradingEndpoint.process_open_orders(db)
+            db.commit()
+        except Exception as e:
+            print(f"[Scheduler] Fehler im Job 'process_open_orders': {e}")
+
+@app.cli.command("init-data")
+def init_app_data():
+    """Führt einmalige Initialisierungsaufgaben aus: Leaderboard aktualisieren und offene Orders verarbeiten."""
+    with app.app_context():
+        db = get_db()
+        print("--- Starte manuelle Daten-Aktualisierung ---")
+
+        print("Aktualisiere Leaderboard...")
+        LeaderboardEndpoint.update_all_net_worths(db)
+        print("Leaderboard aktualisiert.")
+
+        print("Verarbeite offene Aufträge...")
+        TradingEndpoint.process_open_orders(db)
+        print("Offene Aufträge verarbeitet.")
+
+        db.commit()
+        print("--- Daten-Aktualisierung abgeschlossen ---")
+
+scheduler = BackgroundScheduler(daemon=True)
+scheduler.add_job(scheduled_order_processing_job, 'interval', seconds=60)
+scheduler.start()
+
 # -- Konstanten für Dropdown-Optionen beim Graph --
 AVAILABLE_PERIODS = [
     ("5d", "5 Tage"), ("1mo", "1 Monat"), ("3mo", "3 Monate"),
@@ -80,7 +140,7 @@ AVAILABLE_QUALITIES = [
     ("high", "Hoch"), ("normal", "Normal"), ("low", "Niedrig")
 ]
 
-
+#--AUTH--
 @app.route('/login', methods=['GET', 'POST'])
 def login_page():
     if 'user_id' in session:
@@ -208,68 +268,8 @@ def reset_password_enter_token_page():
         else:
             return redirect(url_for('reset_password_confirm_page', token=token))
     return render_template('auth/reset_enter_token.html')
+#//--AUTH--
 
-
-@app.route('/trade/<string:ticker_symbol>', methods=['GET', 'POST'])
-def trade_page(ticker_symbol):
-    if 'user_id' not in session:
-        flash('Bitte logge dich ein, um zu handeln.', 'warning')
-        return redirect(url_for('login_page', next=request.url))
-
-    ticker_symbol = ticker_symbol.upper()
-    basic_info, info_error = get_stock_basic_info_yfinance(ticker_symbol) # Renamed for clarity
-    if info_error or not basic_info:
-        flash(f"Ticker '{ticker_symbol}' nicht gefunden oder ungültig (yfinance). Handel nicht möglich.", 'error')
-        return render_template('trade_error.html', ticker=ticker_symbol)
-
-    trade_mode = request.args.get('mode', 'long')
-
-    current_price = basic_info.get('info_dict', {}).get('currentPrice',
-                                                        basic_info.get('info_dict', {}).get('regularMarketPrice',
-                                                                                            'N/A'))
-
-    if request.method == 'POST':
-        trade_data = {
-            "user_id": session.get('user_id'),
-            "ticker": ticker_symbol,
-            "trade_type": trade_mode,
-        }
-
-        if trade_mode == 'long':
-            trade_data['quantity'] = request.form.get('quantity', type=int)
-            trade_data['order_type'] = request.form.get('order_type')
-            if trade_data['order_type'] == 'limit':
-                trade_data['limit_price'] = request.form.get('limit_price', type=float)
-            else:
-                trade_data['price'] = current_price
-            trade_data['validity'] = request.form.get('validity')
-        elif trade_mode == 'short':
-            trade_data['quantity'] = request.form.get('quantity_short', type=int)
-        elif trade_mode == 'option':
-            trade_data['option_type'] = request.form.get('option_type_select')
-            trade_data['strike_price'] = request.form.get('strike_price_option', type=float)
-            trade_data['expiration_date'] = request.form.get('expiration_date_option')
-            trade_data['quantity_option'] = request.form.get('quantity_option', type=int)
-
-        if not trade_data.get('quantity') and not trade_data.get('quantity_short') and not trade_data.get('quantity_option'):
-            flash('Bitte gib eine Menge ein.', 'error')
-        else:
-            conn = get_db()
-            trade_result = TRADING.execute_trade(conn, session.get('username'), trade_data)
-            if trade_result.get('success'):
-                conn.commit()
-                flash(trade_result.get('message'), 'success')
-                return redirect(url_for('trade_page', ticker_symbol=ticker_symbol, mode=trade_mode))
-            else:
-                flash(trade_result.get('message'), 'error')
-
-
-    #Das geld muss an trading.py
-    return render_template('trade_page.html',
-                           ticker=ticker_symbol,
-                           company_name=basic_info.get('name', ticker_symbol),
-                           current_price=current_price,
-                           current_mode=trade_mode)
 
 def get_stock_basic_info_yfinance(ticker_symbol): # Renamed to avoid conflict
     try:
@@ -489,6 +489,40 @@ def generate_stock_plotly_chart(ticker_symbol, period="1y", interval="1d", quali
     return chart_html, error_msg, company_name
 
 
+def yfinance_ticker_is_valid(ticker_symbol: str) -> bool:
+    """
+    Überprüft zuverlässiger, ob ein Ticker auf yfinance gültig ist und Marktdaten hat.
+    """
+    if not ticker_symbol:
+        return False
+    try:
+        stock = yf.Ticker(ticker_symbol)
+        info = stock.info
+
+        # Primärer Check: Ist ein Preis verfügbar? Das ist die wichtigste Bedingung.
+        if info.get('regularMarketPrice') is not None or info.get('currentPrice') is not None:
+            return True
+
+        # Sekundärer Check: Wenn .info keine Preisdaten liefert (z.B. bei Indizes),
+        # prüfen, ob zumindest historische Daten vorhanden sind.
+        if 'longName' in info or 'shortName' in info:
+            if not stock.history(period="5d", interval="1d").empty:
+                return True
+
+        return False
+    except Exception:
+        # Jede Exception (z.B. HTTP-Fehler bei ungültigen Tickern) bedeutet,
+        # dass der Ticker nicht gültig ist.
+        return False
+
+
+@app.route('/', methods=['GET'])
+def landing_page():
+    # Redirect to search page instead of login if not logged in, or dashboard if logged in
+    if 'user_id' in session:
+        return redirect(url_for('dashboard_page'))
+    return redirect(url_for('search_stock_page'))
+
 @app.route('/dashboard')
 @login_required
 def dashboard_page():
@@ -503,32 +537,101 @@ def dashboard_page():
     return render_template('depot.html', depot=depot_data)
 
 
-@app.route('/', methods=['GET'])
-def landing_page():
-    # Redirect to search page instead of login if not logged in, or dashboard if logged in
-    if 'user_id' in session:
-        return redirect(url_for('dashboard_page'))
-    return redirect(url_for('search_stock_page'))
-
-
-@app.route('/search', methods=['GET']) # Changed to only GET, search query via args
+@app.route('/search')
 def search_stock_page():
     query = request.args.get('keywords', '').strip()
-    results = None
-    error = None
+    results, error = None, None
 
     if query:
         if not ALPHA_VANTAGE_API_KEY:
-            error = "Alpha Vantage API Key nicht konfiguriert. Die Suche ist deaktiviert."
-            flash(error, 'error')
+            error = "Suche ist deaktiviert, da der Alpha Vantage API Key fehlt."
         else:
-            results, error = search_alpha_vantage(query)
-            if error:
-                flash(error, 'error')
-            elif not results:
+            raw_results, error = search_alpha_vantage(query)
+            if raw_results:
+                results = []
+                for res in raw_results:
+                    # ** NEUE VALIDIERUNG **
+                    res['yfinance_valid'] = yfinance_ticker_is_valid(res['1. symbol'])
+                    results.append(res)
+            elif not error:
                 flash(f"Keine Ergebnisse für '{query}' gefunden.", 'info')
-    # If no query, just show the search page
+
+    if error: flash(error, 'error')
     return render_template('search_page.html', query=query, results=results, error=error)
+
+
+@app.route('/trade/<string:ticker_symbol>', methods=['GET', 'POST'])
+@login_required
+def trade_page(ticker_symbol):
+    conn = get_db()
+    ticker_symbol = ticker_symbol.upper()
+    basic_info, _ = get_stock_basic_info_yfinance(ticker_symbol)
+
+    if not basic_info:
+        flash(f"Ticker '{ticker_symbol}' nicht gefunden. Handel nicht möglich.", 'error')
+        return render_template('trade_error.html', ticker=ticker_symbol)
+
+    # Schritt 1: Alle Daten für die Anzeige sammeln
+    context = {
+        "stock": basic_info.get('info_dict'),
+        "ticker": ticker_symbol,
+        "position": None,
+        "absolute_profit_loss": None,
+        "relative_profit_loss": None,
+        "available_cash": None
+    }
+
+    # Verfügbares Kapital berechnen
+    total_cash = AccountEndpoint.get_balance(conn, user_id=session['user_id'])
+    locked_cash = TradingEndpoint.get_locked_cash(conn, session['user_id'])
+    context["available_cash"] = total_cash - locked_cash
+
+    # Depot-Position und potenziellen G/V berechnen
+    position = TradingEndpoint.get_user_position(conn, session['user_id'], ticker_symbol)
+    if position and position.get('quantity', 0) > 0:
+        context["position"] = position
+        current_price = basic_info.get('info_dict', {}).get('regularMarketPrice')
+
+        if current_price and position.get('average_purchase_price'):
+            avg_price = position['average_purchase_price']
+            qty = position['quantity']
+
+            purchase_value = avg_price * qty
+            current_value = current_price * qty
+            abs_pl = current_value - purchase_value
+            context["absolute_profit_loss"] = abs_pl
+
+            if purchase_value > 0:
+                rel_pl = (abs_pl / purchase_value) * 100
+                context["relative_profit_loss"] = rel_pl
+
+    # Schritt 2: Formular-Absendung verarbeiten
+    if request.method == 'POST':
+        try:
+            order_details = {
+                "ticker": ticker_symbol,
+                "order_type": request.form['order_type'],
+                "quantity": int(request.form['quantity']),
+                "limit_price": float(request.form.get('limit_price')) if request.form.get('limit_price') else None,
+                "stop_price": float(request.form.get('stop_price')) if request.form.get('stop_price') else None,
+            }
+
+            result = TradingEndpoint.place_order(conn, session['user_id'], order_details)
+
+            if result.get('success'):
+                conn.commit()
+                flash(result.get('message'), 'success')
+                return redirect(url_for('my_orders_page'))
+            else:
+                flash(result.get('message'), 'error')
+                return redirect(url_for('trade_page', ticker_symbol=ticker_symbol))
+
+        except (KeyError, ValueError) as e:
+            flash(f'Ungültige Eingabe im Formular. Bitte überprüfen Sie Ihre Daten. Fehler: {e}', 'error')
+            return redirect(url_for('trade_page', ticker_symbol=ticker_symbol))
+
+    # Schritt 3: Seite bei GET-Request rendern
+    return render_template('trade_page.html', **context)
 
 
 @app.route('/stock/<string:ticker_symbol>')
@@ -574,58 +677,56 @@ def stock_detail_page(ticker_symbol):
 
 
 @app.route('/leaderboard')
+@login_required  # Schutz hinzugefügt, da es eine Benutzerfunktion ist
 def leaderboard_page():
     db = get_db()
-    now = datetime.now()
 
-    last_update = leaderboard_cache.get("last_updated")
-    if not last_update or (now - last_update) > timedelta(minutes=10):
-        print("Leaderboard wird neu berechnet...")
-        LeaderboardEndpoint.update_all_net_worths(db)
-        db.commit()
-        leaderboard_cache["last_updated"] = now
+    # Erzwinge die Aktualisierung bei jedem Besuch der Seite
+    print("Leaderboard wird neu berechnet...")
+    LeaderboardEndpoint.update_all_net_worths(db)
+    db.commit()
 
     page = request.args.get('page', 1, type=int)
     page_size = 50
-    leaderboard_data = LeaderboardEndpoint.get_paginated_leaderboard(db, page=page, page_size=page_size)
 
     # Gesamtanzahl der Einträge für die Seitennavigation holen
     cursor = db.cursor()
-    cursor.execute("SELECT COUNT(*) FROM leaderboard")
+    cursor.execute("SELECT COUNT(*) FROM orders")  # Annahme: Tabelle heißt jetzt 'orders'
     total_entries = cursor.fetchone()[0]
-    total_pages = (total_entries + page_size - 1) // page_size
+    total_pages = (total_entries + page_size - 1) // page_size if total_entries > 0 else 1
+
+    leaderboard_data = LeaderboardEndpoint.get_paginated_leaderboard(db, page=page, page_size=page_size)
 
     return render_template('leaderboard.html', leaderboard_data=leaderboard_data, current_page=page,
                            total_pages=total_pages)
 
 #------------
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            flash('Bitte melde dich an, um diese Seite zu sehen.', 'warning')
-            return redirect(url_for('login_page'))
-        return f(*args, **kwargs)
-    return decorated_function
-
 
 @app.route('/api/refresh-depot', methods=['POST'])
 @login_required
 def api_refresh_depot():
     now = datetime.now()
-    last_refresh = session.get('last_depot_refresh')
+    last_refresh_str = session.get('last_depot_refresh')
 
-    # Timezone-naive datetime Objekte für den Vergleich erstellen
-    if last_refresh and (now - datetime.fromisoformat(last_refresh)) < timedelta(minutes=1):
-        return jsonify({"success": False, "message": "Bitte warte eine Minute vor der nächsten Aktualisierung."}), 429
+    if last_refresh_str:
+        last_refresh = datetime.fromisoformat(last_refresh_str)
+        if (now - last_refresh) < timedelta(seconds=60):
+            # Gib eine Fehlermeldung zurück, wenn zu früh aktualisiert wird
+            return jsonify({
+                "success": False,
+                "message": "Bitte warte 60 Sekunden."
+            }), 429
 
     user_id = session['user_id']
     db = get_db()
-    depot_data = DepotEndpoint.get_depot_details(db, user_id)
+
+    # Depot-Aktualisierung im Depot-System aufrufen (Annahme: es gibt eine solche Funktion)
+    # Für dieses Beispiel rufen wir einfach get_depot_details auf, um die Logik zu simulieren
+    DepotEndpoint.get_depot_details(db, user_id)
 
     session['last_depot_refresh'] = now.isoformat()
-    flash('Depot erfolgreich aktualisiert!', 'success')
-    return jsonify({"success": True, "data": depot_data})
+    # Entferne flash() und gib die Nachricht direkt im JSON zurück
+    return jsonify({"success": True, "message": "Erfolgreich!"})
 
 
 @app.route('/test_graph')
@@ -667,5 +768,38 @@ def test_graph_page():
                            available_qualities=AVAILABLE_QUALITIES)
 
 
+# Fügen Sie diese Route in Ihrer app.py ein oder ersetzen Sie die existierende
+
+@app.route('/my_orders')
+@login_required
+def my_orders_page():
+    db = get_db()
+    all_orders = TradingEndpoint.get_user_orders(db, session['user_id'])
+
+    open_orders = [order for order in all_orders if order['status'] == 'OPEN']
+    closed_orders = [order for order in all_orders if order['status'] != 'OPEN']
+
+    # Aktuelle Preise für offene Aufträge in einem Batch holen
+    prices = {}
+    open_tickers = {order['ticker'] for order in open_orders}
+    if open_tickers:
+        try:
+            data = yf.download(list(open_tickers), period="1d", progress=False)['Close']
+            if not data.empty:
+                latest_prices = data.iloc[-1]
+                prices = latest_prices.to_dict()
+        except Exception as e:
+            print(f"Fehler beim Holen der Kurse für offene Orders: {e}")
+
+    return render_template('my_orders.html', open_orders=open_orders, closed_orders=closed_orders, prices=prices)
+
+
+
+
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=False) #Wir nutzen 5001 wegen Mac
+    # siehe init_app_data()
+
+    # Flask-App starten
+    # use_reloader=False ist wichtig, damit der Scheduler nur einmal startet!
+    app.run(debug=True, use_reloader=False)

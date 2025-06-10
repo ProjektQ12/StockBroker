@@ -1,127 +1,130 @@
 {% extends "base.html" %}
 
-{% block title %}Handeln: {{ company_name if company_name and company_name != ticker else ticker }}{% endblock %}
+{% block title %}Trade {{ ticker }}{% endblock %}
 
 {% block content %}
-<div class="content-container" style="max-width: 700px;">
+<div class="content-container" style="max-width: 600px;">
     <h1>
-        Handeln: {{ company_name if company_name and company_name != ticker else ticker }}
-        {% if company_name and company_name != ticker %}({{ticker}}){% endif %}
+        Trade {{ stock.get('shortName', ticker) }}
+        <span style="font-size:0.7em; color:#777;">({{ ticker }})</span>
     </h1>
-    <p style="text-align:center; margin-bottom:20px; font-size:1.1em;">
-        Aktueller Kurs: <strong>{{ current_price if current_price != 'N/A' else 'Nicht verfügbar' }}</strong>
-    </p>
-
-    {# Schalter für Long/Short/Options #}
-    <div class="trade-mode-selector" style="text-align: center; margin-bottom: 25px;">
-        <a href="{{ url_for('trade_page', ticker_symbol=ticker, mode='long') }}"
-           class="trade-mode-button {{ 'active' if current_mode == 'long' }}">Long</a>
-        <a href="{{ url_for('trade_page', ticker_symbol=ticker, mode='short') }}"
-           class="trade-mode-button {{ 'active' if current_mode == 'short' }}">Short</a>
-        <a href="{{ url_for('trade_page', ticker_symbol=ticker, mode='option') }}"
-           class="trade-mode-button {{ 'active' if current_mode == 'option' }}">Optionen</a>
+    <div style="text-align:center; font-size:1.5em; margin-bottom:25px;">
+        Aktueller Kurs: €{{ stock.get('regularMarketPrice', 'N/A') | round(2) if stock.get('regularMarketPrice') is not none else 'N/A' }}
     </div>
 
-    <form method="POST" action="{{ url_for('trade_page', ticker_symbol=ticker, mode=current_mode) }}">
-
-        {# --- LONG Bereich --- #}
-        {% if current_mode == 'long' %}
-        <div class="trade-section">
-            <h2>Long Position eröffnen</h2>
-            <div class="form-group">
-                <label for="quantity">Stückzahl</label>
-                <input type="number" id="quantity" name="quantity" min="1" value="1" required class="form-control">
-            </div>
-            <div class="form-group">
-                <label for="order_type">Order-Typ</label>
-                <select id="order_type" name="order_type" class="form-control" onchange="toggleLimitPrice(this.value)">
-                    <option value="market" selected>Market (Bestens)</option>
-                    <option value="limit">Limit</option>
-                </select>
-            </div>
-            <div class="form-group" id="limitPriceGroup" style="display: none;">
-                <label for="limit_price">Limit-Preis</label>
-                <input type="number" step="0.01" id="limit_price" name="limit_price" class="form-control" placeholder="z.B. 150.50">
-            </div>
-            <div class="form-group">
-                <label for="validity">Gültigkeit</label>
-                <select id="validity" name="validity" class="form-control">
-                    <option value="day" selected>Tagesgültig (Day)</option>
-                    <option value="gtc">Unbegrenzt (GTC)</option>
-                </select>
-            </div>
-            <button type="submit" class="form-button full-width">Kaufen (Long)</button>
+    <div style="display: flex; justify-content: space-around; background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 25px; text-align: center; flex-wrap: wrap; gap: 15px;">
+        <div>
+            <span style="display:block; font-size:0.9em; color:#6c757d;">Verfügbares Kapital</span>
+            <strong style="font-size:1.2em;">€{{ "{:,.2f}".format(available_cash) if available_cash is not none else 'N/A' }}</strong>
         </div>
-        <script>
-            function toggleLimitPrice(orderType) {
-                const limitGroup = document.getElementById('limitPriceGroup');
-                const limitInput = document.getElementById('limit_price');
-                if (limitGroup && limitInput) {
-                    limitGroup.style.display = orderType === 'limit' ? 'block' : 'none';
-                    limitInput.required = orderType === 'limit';
-                    if (orderType !== 'limit') {
-                        limitInput.value = '';
-                    }
-                }
-            }
-            document.addEventListener('DOMContentLoaded', function() {
-                const orderTypeSelect = document.getElementById('order_type');
-                if (orderTypeSelect) {
-                     toggleLimitPrice(orderTypeSelect.value);
-                }
-            });
-        </script>
-        {% endif %}
 
-        {# --- SHORT Bereich --- #}
-        {% if current_mode == 'short' %}
-        <div class="trade-section">
-            <h2>Short Position eröffnen</h2>
-            <p class="info-box" style="text-align:center; background-color:#fff3cd; color:#664d03; border-color:#ffecb5;">
-                Short-Handel ist in dieser Demo-Version noch nicht implementiert.
-            </p>
-            </div>
-        {% endif %}
+        {% if position %}
+        <div>
+            <span style="display:block; font-size:0.9em; color:#6c757d;">Im Depot</span>
+            <strong style="font-size:1.2em;">{{ position.quantity }} Stk.</strong>
+        </div>
 
-        {# --- OPTIONS Bereich --- #}
-        {% if current_mode == 'option' %}
-        <div class="trade-section">
-            <h2>Optionshandel</h2>
-             <p class="info-box" style="text-align:center; background-color:#fff3cd; color:#664d03; border-color:#ffecb5;">
-                Optionshandel ist in dieser Demo-Version noch nicht implementiert.
-            </p>
-            </div>
+        {% if absolute_profit_loss is not none %}
+        <div id="profit-loss-info" style="display: none;">
+            <span style="display:block; font-size:0.9em; color:#6c757d;">Potenzieller G/V</span>
+            <strong style="font-size:1.2em; color: {{ '#198754' if absolute_profit_loss >= 0 else '#dc3545' }};">
+                €{{ "{:,.2f}".format(absolute_profit_loss) }}
+                {% if relative_profit_loss is not none %}
+                    <span style="font-size:0.8em; display:block;">({{ "{:+.2f}".format(relative_profit_loss) }}%)</span>
+                {% endif %}
+            </strong>
+        </div>
         {% endif %}
-    </form>
-    <div style="text-align:center; margin-top:30px;">
-    <a href="{{ url_for('stock_detail_page', ticker_symbol=ticker) }}" class="footer-link">« Zurück zur Detailseite von {{ticker}}</a>
+        {% endif %}
     </div>
+
+    <form method="POST" action="{{ url_for('trade_page', ticker_symbol=ticker) }}" id="trade-form">
+        <div class="form-group">
+            <label for="order_type">Order-Typ</label>
+            <select class="form-control" id="order_type" name="order_type" required>
+                <option value="MARKET_BUY">Market Buy</option>
+                <option value="MARKET_SELL">Market Sell</option>
+                <option value="LIMIT_BUY">Limit Buy</option>
+                <option value="LIMIT_SELL">Limit Sell</option>
+                <option value="STOP_LOSS_SELL">Stop Loss (Sell)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="quantity">Menge</label>
+            <input type="number" min="1" class="form-control" id="quantity" name="quantity" placeholder="z.B. 10" required>
+        </div>
+
+        <div class="form-group" id="limit-price-group" style="display: none;">
+            <label for="limit_price">Limit-Preis</label>
+            <input type="number" step="any" min="0.01" class="form-control" id="limit_price" name="limit_price" placeholder="Preis pro Aktie">
+        </div>
+
+        <div class="form-group" id="stop-price-group" style="display: none;">
+            <label for="stop_price">Stop-Preis</label>
+            <input type="number" step="any" min="0.01" class="form-control" id="stop_price" name="stop_price" placeholder="Preis, bei dem verkauft wird">
+        </div>
+
+        <button type="submit" class="form-button full-width" style="margin-top:10px;">Order platzieren</button>
+    </form>
 </div>
-<style>
-    .trade-mode-button {
-        padding: 10px 18px; margin: 0 5px;
-        background-color: #e9ecef; color: #495057;
-        border-radius: 6px; text-decoration: none;
-        border: 1px solid #ced4da; font-size:0.95em;
-        transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 1. Alle relevanten HTML-Elemente einmalig holen
+    const orderTypeSelect = document.getElementById('order_type');
+    const limitPriceGroup = document.getElementById('limit-price-group');
+    const stopPriceGroup = document.getElementById('stop-price-group');
+    const limitPriceInput = document.getElementById('limit_price');
+    const stopPriceInput = document.getElementById('stop_price');
+    const profitLossInfo = document.getElementById('profit-loss-info');
+
+    // 2. Funktion zum Anzeigen/Verstecken der Felder definieren
+    function toggleDynamicElements() {
+        const selectedType = orderTypeSelect.value;
+        console.log("Neuer Order-Typ ausgewählt:", selectedType); // Zum Debuggen in der Browser-Konsole
+
+        // --- Standardzustand: Alle optionalen Elemente sind versteckt ---
+        limitPriceGroup.style.display = 'none';
+        limitPriceInput.required = false;
+
+        stopPriceGroup.style.display = 'none';
+        stopPriceInput.required = false;
+
+        if (profitLossInfo) {
+            profitLossInfo.style.display = 'none';
+        }
+
+        // --- Logik zum gezielten Einblenden ---
+
+        // Zeige Limit-Feld für Limit-Orders
+        if (selectedType === 'LIMIT_BUY' || selectedType === 'LIMIT_SELL') {
+            limitPriceGroup.style.display = 'block';
+            limitPriceInput.required = true;
+        }
+
+        // Zeige Stop-Feld für Stop-Loss-Orders
+        if (selectedType === 'STOP_LOSS_SELL') {
+            stopPriceGroup.style.display = 'block';
+            stopPriceInput.required = true;
+        }
+
+        // Zeige G/V-Info für alle Verkaufs-Typen, falls die Box existiert
+        const sellTypes = ['MARKET_SELL', 'LIMIT_SELL', 'STOP_LOSS_SELL'];
+        if (profitLossInfo && sellTypes.includes(selectedType)) {
+            // 'block' ist hier nicht ideal, da es ein Flex-Item ist.
+            // Wir setzen es auf 'initial', damit es seinen ursprünglichen display-Wert wieder annimmt.
+            profitLossInfo.style.display = 'initial';
+        }
     }
-    .trade-mode-button:hover {
-        background-color: #dbe1e6;
-        border-color: #adb5bd;
-    }
-    .trade-mode-button.active {
-        background-color: #0d6efd; color: white;
-        border-color: #0d6efd; font-weight: 500;
-    }
-    .trade-section {
-        border: 1px solid #dee2e6; padding: 20px 25px; border-radius: 8px; margin-top: 20px; background-color: #fff;
-    }
-    .trade-section h2 {
-        text-align: left;
-        font-size: 1.4em;
-        margin-bottom: 25px;
-        padding-bottom: 10px;
-        border-bottom: 1px solid #eee;
-    }
-</style>
+
+    // 3. Event-Listener an das Dropdown-Menü binden
+    orderTypeSelect.addEventListener('change', toggleDynamicElements);
+
+    // 4. Funktion einmal beim Laden der Seite ausführen, um den korrekten Anfangszustand herzustellen
+    toggleDynamicElements();
+});
+</script>
 {% endblock %}

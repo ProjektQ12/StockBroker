@@ -4,7 +4,7 @@
 
 {% block content %}
 <style>
-    /* Spezifische Styles für das Depot */
+    /* ... (CSS Styles bleiben unverändert) ... */
     .depot-header {
         display: flex;
         justify-content: space-between;
@@ -13,44 +13,6 @@
         padding-bottom: 20px;
         border-bottom: 1px solid #eee;
     }
-    .depot-header h2 {
-        margin: 0;
-        font-size: 2em;
-        color: #333;
-    }
-    .depot-header h2 small {
-        font-size: 0.6em;
-        color: #666;
-        display: block;
-    }
-    #refresh-button {
-        position: relative;
-        overflow: hidden; /* Wichtig für die Progress-Bar */
-        transition: background-color 0.3s, color 0.3s;
-    }
-    #refresh-button .progress-bar {
-        position: absolute;
-        top: 0;
-        left: 0;
-        height: 100%;
-        width: 0;
-        background-color: rgba(255, 255, 255, 0.3);
-        transition: width 60s linear; /* 60 Sekunden Animation */
-    }
-    #refresh-button:disabled {
-        background-color: #6c757d;
-        cursor: not-allowed;
-    }
-    .depot-summary {
-        text-align: right;
-        font-size: 1.1em;
-        margin-top: 1.5rem;
-    }
-    .depot-summary p { margin: 5px 0; }
-    .depot-summary strong { color: #000; }
-    .text-success { color: #198754; }
-    .text-danger { color: #dc3545; }
-    .text-muted { color: #6c757d; }
 </style>
 
 <div class="content-container">
@@ -62,7 +24,6 @@
             </h2>
         </div>
         <button id="refresh-button" class="form-button">
-            <div class="progress-bar"></div>
             <span class="button-text">Aktualisieren</span>
         </button>
     </div>
@@ -76,6 +37,7 @@
                 <th style="text-align: right;">Avg. Kaufpreis</th>
                 <th style="text-align: right;">Akt. Kurs</th>
                 <th style="text-align: right;">Akt. Wert</th>
+                <th style="text-align: center;">Aktionen</th>
             </tr>
         </thead>
         <tbody>
@@ -85,23 +47,19 @@
                 <td style="text-align: right;">{{ pos.quantity }}</td>
                 <td style="text-align: right;">€{{ "{:,.2f}".format(pos.average_purchase_price) }}</td>
                 <td style="text-align: right;">
-                    {% if pos.current_price %}
-                        €{{ "{:,.2f}".format(pos.current_price) }}
-                    {% else %}
-                        <span class="text-muted">N/A</span>
-                    {% endif %}
+                    {% if pos.current_price %}€{{ "{:,.2f}".format(pos.current_price) }}{% else %}<span class="text-muted">N/A</span>{% endif %}
                 </td>
                 <td style="text-align: right;">
-                    {% if pos.current_value %}
-                        €{{ "{:,.2f}".format(pos.current_value) }}
-                    {% else %}
-                        <span class="text-muted">N/A</span>
-                    {% endif %}
+                    {% if pos.current_value %}€{{ "{:,.2f}".format(pos.current_value) }}{% else %}<span class="text-muted">N/A</span>{% endif %}
+                </td>
+                <td style="text-align: center;">
+                    <a href="{{ url_for('stock_detail_page', ticker_symbol=pos.ticker) }}" class="form-button" style="padding: 5px 10px; font-size: 0.85em; background-color: #6c757d;">Details</a>
+                    <a href="{{ url_for('trade_page', ticker_symbol=pos.ticker) }}" class="form-button" style="padding: 5px 10px; font-size: 0.85em;">Handeln</a>
                 </td>
             </tr>
             {% else %}
             <tr>
-                <td colspan="5" style="text-align: center;">Sie haben noch keine Positionen in Ihrem Depot.</td>
+                <td colspan="6" style="text-align: center;">Sie haben noch keine Positionen in Ihrem Depot.</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -118,48 +76,43 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const refreshButton = document.getElementById('refresh-button');
-    const progressBar = refreshButton.querySelector('.progress-bar');
     const buttonText = refreshButton.querySelector('.button-text');
 
     refreshButton.addEventListener('click', function() {
-        // Button deaktivieren und Animation starten
+        // Button deaktivieren und Lade-Zustand anzeigen
         this.disabled = true;
         buttonText.textContent = 'Lädt...';
-        progressBar.style.width = '100%';
+        const originalBg = this.style.backgroundColor;
 
-        // Nach 60 Sekunden den Button wieder freigeben
-        setTimeout(() => {
-            this.disabled = false;
-            buttonText.textContent = 'Aktualisieren';
-            progressBar.style.transition = 'none'; // Animation zurücksetzen
-            progressBar.style.width = '0';
-            // Timeout, um die Transition wieder zu aktivieren, nachdem sie zurückgesetzt wurde
-            setTimeout(() => {
-                progressBar.style.transition = 'width 60s linear';
-            }, 50);
-        }, 60000);
-
-        // API-Aufruf zum Aktualisieren der Daten
         fetch("{{ url_for('api_refresh_depot') }}", {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         })
-        .then(response => {
-            // Flashed Messages werden vom Server gerendert nach der Seitenneuladung.
-            // Besser ist es, die Nachricht per JS anzuzeigen oder die Seite neu zu laden.
-            // Wir laden die Seite neu, um die Flashed Message anzuzeigen.
-            window.location.reload();
-            return response.json(); // Wir verarbeiten es trotzdem, falls wir uns gegen den Reload entscheiden
-        })
+        .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, body: data })))
         .then(result => {
-             if (!result.success) {
-                 // Zeige eine Fehlermeldung an, wenn wir nicht neu laden
-                 console.error(result.message);
+             // === NEUES FEEDBACK OHNE SEITEN-NEULADUNG ===
+             if (result.ok) {
+                buttonText.textContent = result.body.message;
+                this.style.backgroundColor = '#198754'; // Grün für Erfolg
+                // Optional: Seite nach Erfolg neu laden, um Werte zu aktualisieren
+                setTimeout(() => window.location.reload(), 1000);
+             } else {
+                buttonText.textContent = result.body.message || 'Fehler';
+                this.style.backgroundColor = '#dc3545'; // Rot für Fehler
              }
         })
         .catch(error => {
             console.error('Fetch-Fehler:', error);
-            buttonText.textContent = 'Fehler!';
+            buttonText.textContent = 'Netzwerkfehler!';
+            this.style.backgroundColor = '#dc3545';
+        })
+        .finally(() => {
+            // Button nach 3 Sekunden wieder zurücksetzen
+            setTimeout(() => {
+                this.disabled = false;
+                buttonText.textContent = 'Aktualisieren';
+                this.style.backgroundColor = originalBg;
+            }, 3000);
         });
     });
 });

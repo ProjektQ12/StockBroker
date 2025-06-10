@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Meine Orders{% endblock %}
+
+{% block content %}
+<div class="content-container">
+    <h1 class="mb-4">Meine Orders</h1>
+
+    <h2 style="font-size: 1.5em; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;">Offene Aufträge</h2>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Ticker</th>
+                    <th>Typ</th>
+                    <th style="text-align: right;">Menge</th>
+                    <th style="text-align: right;">Limit/Stop Preis</th>
+                    <th style="text-align: right;">Aktueller Kurs</th>
+                    <th>Erstellt am</th>
+                    <th>Aktion</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in open_orders %}
+                <tr>
+                    <td><strong>{{ order.ticker }}</strong></td>
+                    <td>{{ order.order_type.replace('_', ' ') }}</td>
+                    <td style="text-align: right;">{{ order.quantity }}</td>
+                    <td style="text-align: right;">
+                        {% if order.limit_price %}
+                            Limit: {{ "€{:,.2f}".format(order.limit_price) }}
+                        {% elif order.stop_price %}
+                            Stop: {{ "€{:,.2f}".format(order.stop_price) }}
+                        {% else %}
+                            Market
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">
+                        {% if prices and order.ticker in prices and prices[order.ticker] %}
+                            €{{ "{:,.2f}".format(prices[order.ticker]) }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ order.created_at.split(' ')[0] }}</td>
+                    <td>
+                        {% if order.status == 'OPEN' %}
+                        <form action="{{ url_for('cancel_order_route', order_id=order.order_id) }}" method="POST" onsubmit="return confirm('Möchten Sie diesen Auftrag wirklich stornieren?');">
+                            <button type="submit" class="form-button" style="background-color:#dc3545; padding: 5px 10px; font-size:0.9em;">Stornieren</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center" style="padding: 20px; color: #6c757d;">Sie haben keine offenen Aufträge.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <hr style="margin: 40px 0;">
+
+    <h2 style="font-size: 1.5em; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;">Auftragshistorie</h2>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Ticker</th>
+                    <th>Typ</th>
+                    <th style="text-align: right;">Menge</th>
+                    <th>Status</th>
+                    <th style="text-align: right;">Ausgeführt zu</th>
+                    <th>Datum</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in closed_orders %}
+                <tr>
+                    <td><strong>{{ order.ticker }}</strong></td>
+                    <td>{{ order.order_type.replace('_', ' ') }}</td>
+                    <td style="text-align: right;">{{ order.quantity }}</td>
+                    <td>
+                        <span style="display:inline-block; padding: 4px 10px; border-radius:12px; color:white; font-size:0.85em;
+                            {% if order.status == 'EXECUTED' %} background-color: #198754;
+                            {% elif order.status == 'CANCELED' %} background-color: #6c757d;
+                            {% else %} background-color: #dc3545; {% endif %}">
+                            {{ order.status }}
+                        </span>
+                    </td>
+                    <td style="text-align: right;">
+                        {% if order.executed_price %}
+                            {{ "€{:,.2f}".format(order.executed_price) }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if order.executed_at %}
+                            {{ order.executed_at.split(' ')[0] }}
+                        {% else %}
+                            {{ order.created_at.split(' ')[0] }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center" style="padding: 20px; color: #6c757d;">Keine abgeschlossenen Aufträge in der Historie.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

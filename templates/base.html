@@ -77,7 +77,10 @@
         <nav>
             <a href="{{ url_for('search_stock_page') }}" class="{{ 'active' if request.endpoint == 'search_stock_page' else '' }}">Suche</a>
             {% if session.user_id %}
-                <a href="{{ url_for('dashboard_page') }}" class="{{ 'active' if request.endpoint == 'dashboard_page' else '' }}">Dashboard</a>
+                <a href="{{ url_for('dashboard_page') }}" class="{{ 'active' if request.endpoint == 'dashboard_page' else '' }}">Depot</a>
+                <a href="{{ url_for('my_orders_page') }}" class="{{ 'active' if request.endpoint == 'my_orders_page' else '' }}">Orders</a>
+                <a href="{{ url_for('leaderboard_page') }}" class="{{ 'active' if request.endpoint == 'leaderboard_page' else '' }}">Leaderboard</a>
+
                 <a href="{{ url_for('logout') }}">Logout ({{ session.username }})</a>
             {% else %}
                 <a href="{{ url_for('login_page') }}" class="{{ 'active' if request.endpoint == 'login_page' else '' }}">Login</a>

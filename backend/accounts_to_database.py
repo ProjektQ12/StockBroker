@@ -70,8 +70,6 @@ class UTILITIES:
         result = cursor.fetchone()
         return result[0] if result else None
 
-
-
     @staticmethod
     def hash_password(password: str, salt: bytes = None) -> tuple[str, str]:
         """Hasht ein Passwort sicher mit einem Salt."""
@@ -148,34 +146,51 @@ class ENDPOINT:
         output = UTILITIES.get_base_protocol()
         username_email = username_email.lower()
 
-        # Bestimme, ob mit E-Mail oder Username eingeloggt wird
-        if _is_email_format_valid(username_email):
-            sql = "SELECT user_id, username, password_hash, salt, email FROM all_users WHERE email = ?"
-        else:
-            sql = "SELECT user_id, username, password_hash, salt, email FROM all_users WHERE username = ?"
+        try:
+            # Bestimme, ob mit E-Mail oder Username eingeloggt wird
+            if _is_email_format_valid(username_email):
+                sql = "SELECT user_id, username, password_hash, salt, email FROM all_users WHERE email = ?"
+            else:
+                sql = "SELECT user_id, username, password_hash, salt, email FROM all_users WHERE username = ?"
 
-        cursor = conn.cursor()
-        cursor.execute(sql, (username_email,))
-        user_data = cursor.fetchone()
+            cursor = conn.cursor()
+            cursor.execute(sql, (username_email,))
+            user_data = cursor.fetchone()
 
-        if user_data is None:
-            output["message"] = ("Benutzername oder E-Mail nicht gefunden. "
-                                 "Registrieren oder Tippen lernen!")
-            return output
+            if user_data is None:
+                output["message"] = ("Benutzername oder E-Mail nicht gefunden. "
+                                     "Registrieren oder Tippen lernen!")
+                return output
 
-        # Entpacke die Benutzerdaten
-        user_id, username, stored_hash, stored_salt, user_email = user_data
+            # Entpacke die Benutzerdaten
+            user_id, username, stored_hash, stored_salt, user_email = user_data
 
-        # Verifiziere das Passwort mit der sicheren Funktion
-        if UTILITIES.verify_password(stored_hash, stored_salt, password):
-            output["success"] = True
-            output["message"] = f"Willkommen zurück, {username}!"
-            output["user_id"] = user_id
-            output["user_email"] = user_email
-        else:
-            output["message"] = "Falsches Passwort. Fettfinger?"
+            # Überprüfen, ob Hash oder Salt aus der DB fehlen
+            if not stored_hash or not stored_salt:
+                output["message"] = "Anmeldefehler: Benutzerkonto ist nicht vollständig eingerichtet."
+                return output
+
+            # Verifiziere das Passwort mit der sicheren Funktion
+            if UTILITIES.verify_password(stored_hash, stored_salt, password):
+                output["success"] = True
+                output["message"] = f"Willkommen zurück, {username}!"
+                output["user_id"] = user_id
+                output["user_email"] = user_email
+                output["username"] = username
+            else:
+                output["message"] = "Falsches Passwort. Fettfinger?"
+
+        except sqlite3.Error as e:
+            # Fängt Datenbank-spezifische Fehler ab
+            print(f"Datenbankfehler beim Login: {e}")
+            output["message"] = "Ein Datenbankfehler ist aufgetreten."
+        except Exception as e:
+            # Fängt alle anderen unerwarteten Fehler ab (z.B. bei der Passwort-Verifizierung)
+            print(f"Unerwarteter Fehler beim Login: {e}")
+            output["message"] = "Ein unerwarteter interner Fehler ist aufgetreten."
 
         return output
+
 
     @staticmethod
     def get_all_users(conn: sqlite3.Connection) -> list[dict]:
