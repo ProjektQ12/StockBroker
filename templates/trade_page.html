@@ -23,15 +23,18 @@
             <span style="display:block; font-size:0.9em; color:#6c757d;">Im Depot</span>
             <strong style="font-size:1.2em;">{{ position.quantity }} Stk.</strong>
         </div>
+        <div id="avg-purchase-price-info" style="display: none;">
+            <span style="display:block; font-size:0.9em; color:#6c757d;">Dein Ø Kaufpreis</span>
+            <strong style="font-size:1.2em;">€{{ "{:,.2f}".format(position.average_purchase_price) if position.average_purchase_price is not none else 'N/A' }}</strong>
+        </div>
 
         {% if absolute_profit_loss is not none %}
-        <div id="profit-loss-info" style="display: none;">
+        <div id="profit-loss-info" style="display: none;"
+             data-total-quantity="{{ position.quantity }}"
+             data-avg-price="{{ position.average_purchase_price }}"
+             data-market-price="{{ stock.get('regularMarketPrice', 0) }}">
             <span style="display:block; font-size:0.9em; color:#6c757d;">Potenzieller G/V</span>
-            <strong style="font-size:1.2em; color: {{ '#198754' if absolute_profit_loss >= 0 else '#dc3545' }};">
-                €{{ "{:,.2f}".format(absolute_profit_loss) }}
-                {% if relative_profit_loss is not none %}
-                    <span style="font-size:0.8em; display:block;">({{ "{:+.2f}".format(relative_profit_loss) }}%)</span>
-                {% endif %}
+            <strong id="profit-loss-value" style="font-size:1.2em;">
             </strong>
         </div>
         {% endif %}
@@ -73,57 +76,111 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // 1. Alle relevanten HTML-Elemente einmalig holen
+    // --- Element-Referenzen ---
     const orderTypeSelect = document.getElementById('order_type');
-    const limitPriceGroup = document.getElementById('limit-price-group');
-    const stopPriceGroup = document.getElementById('stop-price-group');
+    const quantityInput = document.getElementById('quantity');
     const limitPriceInput = document.getElementById('limit_price');
     const stopPriceInput = document.getElementById('stop_price');
-    const profitLossInfo = document.getElementById('profit-loss-info');
 
-    // 2. Funktion zum Anzeigen/Verstecken der Felder definieren
+    const limitPriceGroup = document.getElementById('limit-price-group');
+    const stopPriceGroup = document.getElementById('stop-price-group');
+
+    const profitLossInfo = document.getElementById('profit-loss-info');
+    const profitLossValue = document.getElementById('profit-loss-value');
+    const avgPurchasePriceInfo = document.getElementById('avg-purchase-price-info');
+
+    // --- Hilfsfunktionen ---
+    function formatCurrency(value) {
+        return `€${value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    function formatPercentage(value) {
+        const sign = value >= 0 ? '+' : '';
+        return `(${sign}${value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%)`;
+    }
+
+    function updatePLDisplay(absPL, relPL) {
+        if (!profitLossValue) return;
+        profitLossValue.style.color = absPL >= 0 ? '#198754' : '#dc3545';
+        profitLossValue.innerHTML = `${formatCurrency(absPL)} <span style="font-size:0.8em; display:block;">${formatPercentage(relPL)}</span>`;
+    }
+
+    // --- Hauptlogik ---
+    function calculateAndUpdatePL() {
+        if (!profitLossInfo) return;
+
+        const sellQuantity = parseFloat(quantityInput.value);
+        const avgPrice = parseFloat(profitLossInfo.dataset.avgPrice);
+        const selectedType = orderTypeSelect.value;
+
+        let sellPrice = 0;
+        if (selectedType === 'LIMIT_SELL') {
+            sellPrice = parseFloat(limitPriceInput.value);
+        } else if (selectedType === 'STOP_LOSS_SELL') {
+            sellPrice = parseFloat(stopPriceInput.value);
+        } else { // MARKET_SELL
+            sellPrice = parseFloat(profitLossInfo.dataset.marketPrice);
+        }
+
+        if (isNaN(sellQuantity) || isNaN(avgPrice) || isNaN(sellPrice) || sellQuantity <= 0 || sellPrice <= 0) {
+            profitLossValue.innerHTML = ''; // Feld leeren bei ungültiger Eingabe
+            return;
+        }
+
+        const purchaseValuePerShare = avgPrice;
+        const sellValuePerShare = sellPrice;
+
+        // Relativer G/V ist unabhängig von der Menge
+        const relPL = (purchaseValuePerShare !== 0) ? ((sellValuePerShare - purchaseValuePerShare) / purchaseValuePerShare) * 100 : 0;
+
+        // Absoluter G/V hängt von der Menge ab
+        const absPL = (sellValuePerShare - purchaseValuePerShare) * sellQuantity;
+
+        updatePLDisplay(absPL, relPL);
+    }
+
     function toggleDynamicElements() {
         const selectedType = orderTypeSelect.value;
-        console.log("Neuer Order-Typ ausgewählt:", selectedType); // Zum Debuggen in der Browser-Konsole
 
-        // --- Standardzustand: Alle optionalen Elemente sind versteckt ---
+        // Standardmäßig alles ausblenden
         limitPriceGroup.style.display = 'none';
         limitPriceInput.required = false;
-
         stopPriceGroup.style.display = 'none';
         stopPriceInput.required = false;
 
-        if (profitLossInfo) {
-            profitLossInfo.style.display = 'none';
-        }
+        if (profitLossInfo) profitLossInfo.style.display = 'none';
+        if (avgPurchasePriceInfo) avgPurchasePriceInfo.style.display = 'none';
 
-        // --- Logik zum gezielten Einblenden ---
-
-        // Zeige Limit-Feld für Limit-Orders
+        // Gezielt einblenden
         if (selectedType === 'LIMIT_BUY' || selectedType === 'LIMIT_SELL') {
             limitPriceGroup.style.display = 'block';
             limitPriceInput.required = true;
         }
 
-        // Zeige Stop-Feld für Stop-Loss-Orders
         if (selectedType === 'STOP_LOSS_SELL') {
             stopPriceGroup.style.display = 'block';
             stopPriceInput.required = true;
         }
 
-        // Zeige G/V-Info für alle Verkaufs-Typen, falls die Box existiert
         const sellTypes = ['MARKET_SELL', 'LIMIT_SELL', 'STOP_LOSS_SELL'];
         if (profitLossInfo && sellTypes.includes(selectedType)) {
-            // 'block' ist hier nicht ideal, da es ein Flex-Item ist.
-            // Wir setzen es auf 'initial', damit es seinen ursprünglichen display-Wert wieder annimmt.
             profitLossInfo.style.display = 'initial';
+            if (avgPurchasePriceInfo && (selectedType === 'LIMIT_SELL' || selectedType === 'STOP_LOSS_SELL')) {
+                avgPurchasePriceInfo.style.display = 'initial';
+            }
+            calculateAndUpdatePL();
+        } else {
+            if(profitLossValue) profitLossValue.innerHTML = '';
         }
     }
 
-    // 3. Event-Listener an das Dropdown-Menü binden
+    // --- Event-Listener ---
     orderTypeSelect.addEventListener('change', toggleDynamicElements);
+    quantityInput.addEventListener('input', calculateAndUpdatePL);
+    limitPriceInput.addEventListener('input', calculateAndUpdatePL);
+    stopPriceInput.addEventListener('input', calculateAndUpdatePL);
 
-    // 4. Funktion einmal beim Laden der Seite ausführen, um den korrekten Anfangszustand herzustellen
+    // Initialer Aufruf, um den korrekten Zustand beim Laden der Seite herzustellen
     toggleDynamicElements();
 });
 </script>

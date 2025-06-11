@@ -3,13 +3,14 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, g, jsonify
 import yfinance as yf
 import plotly.graph_objects as go
-import os
+import os, math
 import json
 import requests
 import sqlite3
 from functools import wraps
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
+
 
 # Lokale Imports
 from backend.accounts_to_database import ENDPOINT as AccountEndpoint
@@ -69,19 +70,6 @@ def configure_ALPHA_VANTAGE_API():
 
 configure_ALPHA_VANTAGE_API()
 
-def update_leaderboard_on_startup():
-    print("Initialisiere Leaderboard beim Start...")
-    conn = None
-    try:
-        conn = sqlite3.connect(DATABASE_FILE)
-        LeaderboardEndpoint.update_all_net_worths(conn)
-        conn.commit()
-        print("Leaderboard wurde erfolgreich aktualisiert.")
-    except sqlite3.Error as e:
-        print(f"Fehler bei der initialen Leaderboard-Aktualisierung: {e}")
-    finally:
-        if conn:
-            conn.close()
 
 @app.route('/cancel_order/<int:order_id>', methods=['POST'])
 @login_required
@@ -108,6 +96,18 @@ def scheduled_order_processing_job():
         except Exception as e:
             print(f"[Scheduler] Fehler im Job 'process_open_orders': {e}")
 
+def scheduled_leaderboard_processing_job():
+    with app.app_context():
+        db = get_db()
+        try:
+            print("[Scheduler 2] Berechne das leaderboard Neu...")
+            result = LeaderboardEndpoint.update_all_net_worths(db)
+            if result.get('success'):
+                print("Leaderboard erfolgreich aktualisiert")
+            db.commit()
+        except Exception as e:
+            print(f"[Scheduler] Fehler im Job 'leaderboard_processing_job': {e}")
+
 @app.cli.command("init-data")
 def init_app_data():
     """Führt einmalige Initialisierungsaufgaben aus: Leaderboard aktualisieren und offene Orders verarbeiten."""
@@ -126,9 +126,14 @@ def init_app_data():
         db.commit()
         print("--- Daten-Aktualisierung abgeschlossen ---")
 
-scheduler = BackgroundScheduler(daemon=True)
-scheduler.add_job(scheduled_order_processing_job, 'interval', seconds=60)
-scheduler.start()
+
+order_scheduler = BackgroundScheduler(daemon=True)
+order_scheduler.add_job(scheduled_order_processing_job, 'interval', seconds=60)
+order_scheduler.start()
+
+leaderboard_scheduler = BackgroundScheduler(daemon=True)
+leaderboard_scheduler.add_job(scheduled_order_processing_job, 'interval', seconds=60)
+leaderboard_scheduler.start()
 
 # -- Konstanten für Dropdown-Optionen beim Graph --
 AVAILABLE_PERIODS = [
@@ -676,30 +681,50 @@ def stock_detail_page(ticker_symbol):
                            available_qualities=AVAILABLE_QUALITIES)
 
 
+
+
+# Ersetzen Sie Ihre bestehende leaderboard_page-Funktion durch diese
 @app.route('/leaderboard')
-@login_required  # Schutz hinzugefügt, da es eine Benutzerfunktion ist
+@login_required
 def leaderboard_page():
-    db = get_db()
-
-    # Erzwinge die Aktualisierung bei jedem Besuch der Seite
-    print("Leaderboard wird neu berechnet...")
-    LeaderboardEndpoint.update_all_net_worths(db)
-    db.commit()
-
+    # --- Paginierungs-Setup ---
     page = request.args.get('page', 1, type=int)
-    page_size = 50
+    if page < 1:
+        page = 1
+    page_size = 50  # Wie viele Einträge pro Seite angezeigt werden sollen
 
-    # Gesamtanzahl der Einträge für die Seitennavigation holen
-    cursor = db.cursor()
-    cursor.execute("SELECT COUNT(*) FROM orders")  # Annahme: Tabelle heißt jetzt 'orders'
-    total_entries = cursor.fetchone()[0]
-    total_pages = (total_entries + page_size - 1) // page_size if total_entries > 0 else 1
+    conn = get_db()
 
-    leaderboard_data = LeaderboardEndpoint.get_paginated_leaderboard(db, page=page, page_size=page_size)
+    # Holen Sie die Daten für die aktuelle Seite
+    # HINWEIS: Ich gehe davon aus, dass Sie LeaderboardEndpoint importiert haben.
+    # from backend.leaderboard import LeaderboardEndpoint
+    paginated_data = LeaderboardEndpoint.get_paginated_leaderboard(conn, page=page, page_size=page_size)
 
-    return render_template('leaderboard.html', leaderboard_data=leaderboard_data, current_page=page,
-                           total_pages=total_pages)
+    # Holen Sie die Gesamtzahl der Benutzer, um die Gesamtseitenzahl zu berechnen
+    total_users = conn.execute("SELECT COUNT(user_id_fk) FROM leaderboard").fetchone()[0]
+    total_pages = math.ceil(total_users / page_size)
 
+    conn.close()
+
+    # --- Scheduler-Logik für die Anzeige der nächsten Aktualisierung (wie zuvor besprochen) ---
+    update_interval_minutes = 1  # Für Debugging. Auf 10 für Produktion ändern.
+    now = datetime.now()
+    minutes_past_hour = now.minute
+    updates_past_hour = minutes_past_hour // update_interval_minutes
+    next_update_minute = (updates_past_hour + 1) * update_interval_minutes
+
+    if next_update_minute >= 60:
+        next_update_time = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    else:
+        next_update_time = now.replace(minute=next_update_minute, second=0, microsecond=0)
+
+    return render_template(
+        'leaderboard.html',
+        leaderboard_data=paginated_data,
+        current_page=page,
+        total_pages=total_pages,
+        next_update_time=next_update_time
+    )
 #------------
 
 @app.route('/api/refresh-depot', methods=['POST'])

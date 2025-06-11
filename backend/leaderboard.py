@@ -8,6 +8,7 @@ Aktienwerte werden über die yfinance-Bibliothek abgefragt.
 
 import sqlite3
 import yfinance as yf
+import pandas as pd
 from datetime import datetime
 from collections import defaultdict
 
@@ -187,7 +188,7 @@ class LeaderboardEndpoint:
 if __name__ == '__main__':
     import pandas as pd  # yfinance benötigt pandas, importieren wir es hier für den Fall der Fälle
 
-    DB_FILE = "backend/StockBroker.db"
+    DB_FILE = "StockBroker.db"
     conn = None
 
     try:
